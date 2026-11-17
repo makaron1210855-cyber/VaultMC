@@ -22,6 +22,8 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }   /* иначе .btns { display: flex } показывал скрытые кнопки */
+main { width: min(560px, 100%); }
 body { margin: 0; min-height: 100vh; background: var(--void); color: var(--ink); font: 17px/1.6 var(--body);
   display: grid; place-items: center; padding: 24px 16px;
   background-image: radial-gradient(circle at 50% -10%, rgba(47, 211, 230, .12), transparent 55%); }
@@ -29,7 +31,7 @@ a { color: var(--neon); }
 .brand { display: flex; align-items: center; gap: 10px; justify-content: center; margin-bottom: 22px;
   font: 900 18px var(--display); letter-spacing: .5px; color: var(--ink); text-decoration: none; }
 .brand img { width: 34px; height: 34px; image-rendering: pixelated; }
-.card { width: min(560px, 100%); background: var(--slab); border: 1px solid var(--seam); padding: 30px 28px; border-radius: 4px;
+.card { width: 100%; background: var(--slab); border: 1px solid var(--seam); padding: 30px 28px; border-radius: 4px;
   box-shadow: 0 30px 80px rgba(0, 0, 0, .45); }
 .kicker { font: 700 12px var(--mono); letter-spacing: 2px; text-transform: uppercase; color: var(--gold); }
 h1 { font: 900 clamp(24px, 6vw, 32px)/1.15 var(--display); margin: 8px 0 12px; word-break: break-word; }
