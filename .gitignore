@@ -12,3 +12,4 @@ accounts.json
 config.json
 saves/
 *.zip
+server/.wrangler/

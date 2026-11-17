@@ -1,0 +1,19 @@
+// Сервер скинов VaultMC (воркер vaultmc-skins). Заливка: в папке server — npx wrangler deploy.
+// Секреты TURN_KEY_ID и TURN_KEY_TOKEN заданы в самом воркере (wrangler их не трогает).
+{
+  "name": "vaultmc-skins",
+  "main": "worker.js",
+  "compatibility_date": "2026-11-16",
+  "workers_dev": true,
+  "kv_namespaces": [
+    { "binding": "SKINS", "id": "9bf4f6afe2614630a807ca191b907bb9" }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "SOCIAL", "class_name": "Social" }]
+  },
+  "exports": {
+    "Social": { "type": "durable-object", "storage": "sqlite" }
+  },
+  // журнал ошибок воркера (игроку подробности больше не показываются, смотреть их — здесь)
+  "observability": { "enabled": true }
+}
