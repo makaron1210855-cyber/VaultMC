@@ -151,7 +151,9 @@ def build_installer(version: str) -> Path:
     check_path_length()
     EXE.parent.mkdir(parents=True, exist_ok=True)
     EXE.unlink(missing_ok=True)
-    r = subprocess.run([find_makensis(), "-V2", f"-DVERSION={version}", NSI.name], cwd=NSI.parent,
+    # /INPUTCHARSET UTF8: файл установщика — UTF-8 без BOM; без этого NSIS читал его в кодировке Windows,
+    # и все русские надписи (окно установки, ярлыки, «Открыть с помощью») выходили кракозябрами
+    r = subprocess.run([find_makensis(), "-INPUTCHARSET", "UTF8", "-V2", f"-DVERSION={version}", NSI.name], cwd=NSI.parent,
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
     if r.returncode or not EXE.exists():
         sys.exit(f"NSIS не собрал установщик:\n{r.stdout[-3000:]}\n{r.stderr[-3000:]}")

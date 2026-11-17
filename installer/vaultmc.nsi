@@ -139,6 +139,9 @@ SectionEnd
 
 Section "Ярлык в меню «Пуск»" SecStart
   SetOutPath "$INSTDIR\app"
+  ; старые ярлыки — заново: установщики до 6.4.18 собирались с неверной кодировкой, и русские названия
+  ; ярлыков выходили кракозябрами («РЈРґР°Р»...»)
+  Delete "$SMPROGRAMS\${APPNAME}\*.lnk"
   CreateDirectory "$SMPROGRAMS\${APPNAME}"
   CreateShortCut "$SMPROGRAMS\${APPNAME}\${APPNAME}.lnk" "$INSTDIR\python\VaultMC.exe" '"$INSTDIR\app\main.py"' "$INSTDIR\app\assets\logo.ico" 0
   CreateShortCut "$SMPROGRAMS\${APPNAME}\Удалить ${APPNAME}.lnk" "$INSTDIR\Uninstall.exe"
