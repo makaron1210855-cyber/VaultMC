@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 APP_NAME = "VaultMC"
-APP_VERSION = "6.4.20"
+APP_VERSION = "7.0.5"
 
 
 def _build_id() -> str:
@@ -127,6 +127,59 @@ def offline_uuid(nickname: str) -> str:
     digest[6] = (digest[6] & 0x0F) | 0x30
     digest[8] = (digest[8] & 0x3F) | 0x80
     return uuid.UUID(bytes=bytes(digest)).hex
+
+
+def available_ram_mb() -> int | None:
+    """Свободная оперативная память в МБ (Windows — GlobalMemoryStatusEx, Linux — MemAvailable). Не вышло — None."""
+    try:
+        if is_windows():
+            class MemoryStatus(ctypes.Structure):
+                _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+                            ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                            ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                            ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+                            ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+            status = MemoryStatus()
+            status.dwLength = ctypes.sizeof(MemoryStatus)
+            if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):  # type: ignore[attr-defined]
+                return None
+            return int(status.ullAvailPhys // 1024 ** 2)
+        if sys.platform.startswith("linux"):
+            with open("/proc/meminfo", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("MemAvailable:"):
+                        return int(line.split()[1]) // 1024
+    except Exception:  # noqa: BLE001 — проверка необязательная
+        return None
+    return None
+
+
+def low_memory_warning(ram_gb: int, available_mb: int | None) -> str:
+    """Текст-предупреждение, если игре отдано больше, чем сейчас свободно (порог 90 %, как у Prism); иначе пустая строка."""
+    if not available_mb or ram_gb <= 0:
+        return ""
+    if ram_gb * 1024 * 0.9 <= available_mb:
+        return ""
+    return (f"Игре отдано {ram_gb} ГБ, а свободно сейчас около {max(0.1, round(available_mb / 1024, 1))} ГБ. "
+            f"Возможны подвисания и вылеты — закройте лишние программы или уменьшите память сборки в её настройках")
+
+
+def java_is_32bit(path: str) -> bool:
+    """Java 32-битная? Windows — по заголовку PE (машина x86), иначе по файлу release (OS_ARCH). Не понятно — False."""
+    try:
+        exe = Path(path)
+        if exe.suffix.lower() == ".exe" and exe.exists():
+            with open(exe, "rb") as f:
+                head = f.read(4096)
+            if head[:2] == b"MZ" and len(head) >= 0x40:
+                off = int.from_bytes(head[0x3C:0x40], "little")
+                if off + 6 <= len(head) and head[off:off + 4] == b"PE\0\0":
+                    return int.from_bytes(head[off + 4:off + 6], "little") == 0x014C
+        release = (exe.parent.parent / "release").read_text(encoding="utf-8", errors="replace")
+        m = re.search(r'OS_ARCH="([^"]+)"', release)
+        return bool(m) and m.group(1).lower() in ("x86", "i386", "i586", "i686")
+    except OSError:
+        return False
 
 
 def total_ram_gb() -> int | None:

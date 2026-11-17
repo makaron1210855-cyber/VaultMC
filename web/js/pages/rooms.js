@@ -88,7 +88,8 @@ function friendsDiff(prev, cur) {
 /** Окошко Windows о друге — только когда лаунчер не на виду (на виду хватает окошка внутри лаунчера). */
 function sysNotify(key, title, text) {
   if (!S.config.win_notify || (document.hasFocus() && !document.hidden)) return;
-  api.system_notify(key, title, text).catch(() => {});
+  // окошко рисует Windows, а не страница лаунчера — поэтому перевод здесь вручную (tr() — только в английском режиме)
+  api.system_notify(key, tr(title), tr(text)).catch(() => {});
 }
 
 /** Заблокировать игрока: дружба и заявки пропадают, он не увидит, что его заблокировали. */
@@ -398,7 +399,7 @@ registerPage('friends', {
       const h = e.target.closest('[data-h]');
       if (!h) return;
       if (h.dataset.h === 'copy') return copyText(S.roomAddress);
-      if (h.dataset.h === 'invite') return copyText(`Заходи ко мне в Minecraft через VaultMC: вкладка «Друзья» → «Зайти к другу» → код ${S.roomCode}`);
+      if (h.dataset.h === 'invite') return copyText(tr(`Заходи ко мне в Minecraft через VaultMC: вкладка «Друзья» → «Зайти к другу» → код ${S.roomCode}`));
       if (h.dataset.h === 'roomnow') {
         h.disabled = true;
         const r = await safe(api.open_room_now());
@@ -501,7 +502,7 @@ async function roomModsGate(name, st, code) {
   const choice = await new Promise((resolve) => {
     const rows = chk.missing.map((m, i) => `<label class="check gm-row"><input type="checkbox" data-i="${i}" ${chk.can ? 'checked' : 'disabled'}>
       <span class="box">${iconSvg('check')}</span><span class="grow no-tr">${esc(m.name)}</span><small class="muted">${mb(m.size)}</small></label>`).join('');
-    const m = openModal(`<h3>${ic('alert')} У <span class="no-tr">${esc(name)}</span> есть моды, которых нет у вас</h3>
+    const m = openModal(`<h3>${ic("alert")} <span class="no-tr">${esc(name)}</span>: есть моды, которых нет у вас</h3>
       <p class="muted">Эти моды добавляют в мир свои звуки, частицы или предметы. Без них игра может выкинуть вас из мира через несколько минут.</p>
       <div class="gm-list">${rows}</div>
       ${chk.can ? `<p class="small muted">Лаунчер поставит в вашу сборку «<span class="no-tr">${esc(inst.name)}</span>» только отмеченные моды (с Modrinth). Остальные моды друга вам не нужны. Убрать их потом можно в модах сборки.</p>`
@@ -603,6 +604,6 @@ document.addEventListener('p2p-lost', async () => {
   const r = await safe(api.relay_guest_start(name, st.relay.port, st.relay.token));
   if (r && r.address) {
     netWatch('relay');
-    toast(`Прямая связь с ${name} оборвалась. Зайдите снова: «Сетевая игра» → «VaultMC · мир ${name}» — теперь через ретранслятор`, 'warn', 15000);
+    toast(`Прямая связь с ${name} оборвалась. Зайдите снова: «Сетевая игра» → «VaultMC · ${name}» — теперь через ретранслятор`, 'warn', 15000);
   }
 });

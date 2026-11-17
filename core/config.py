@@ -48,7 +48,11 @@ class LauncherConfig:
     tunnel_migrated: bool = False            # старый выбор e4all один раз переводится на e4mc+lan
     # Лаунчер
     accent: str = "Алмазный"       # цвет интерфейса
-    hide_launcher: bool = False          # больше не используется (лаунчер в игре не прячется)
+    crash_stats: bool = False            # присылать анонимную статистику падений (только по согласию игрока)
+    crash_stats_asked: bool = False      # вопрос про статистику уже задавали
+    theme: str = "dark"                  # dark | light | auto (как в Windows)
+    ui_scale: int = 100                  # масштаб интерфейса, %: 90–125
+    hide_launcher: bool = False        # больше не используется (лаунчер в игре не прячется)
     skins_in_game: bool = True           # CustomSkinLoader + сервер скинов в сборках с модами
     show_online: bool = True             # друзья видят, что я в сети и во что играю
     auto_world_backups: bool = True      # после игры копировать миры, в которых играли (5 автокопий на мир)

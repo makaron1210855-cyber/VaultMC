@@ -29,6 +29,7 @@ PORT_MIN, PORT_MAX = 25600, 25999    # открыть в файрволе
 MAX_ROOMS = 300
 HOSTS_PER_IP = 3                      # комнат одновременно с одного адреса
 JOINS_PER_MIN = 30                    # подключений гостей в минуту с одного адреса
+MAX_GUESTS = 10                       # гостей одновременно в одной комнате (лишние получат «перегружен»)
 PAIR_TIMEOUT = 15                     # сек. ждём, пока хозяин откроет DATA-соединение
 PING_EVERY = 20                       # сек. — keepalive управляющего соединения
 FIRST_LINE_TIMEOUT = 15
@@ -41,6 +42,7 @@ class Room:
         self.writer = writer
         self.token = token            # None — комната старого способа (без ключа)
         self.ip = ip
+        self.guests = 0               # гостей сейчас подключено к комнате
 
 
 rooms = {}          # публичный порт -> Room
@@ -130,6 +132,22 @@ async def join(a, b):
 
 async def pair(room, reader, writer, greet):
     """Гость пришёл: просим хозяина открыть DATA-соединение и соединяем их. greet — ответ гостю перед данными."""
+    if room.guests >= MAX_GUESTS:
+        if greet:
+            try:
+                await say(writer, "ERR busy")
+            except (ConnectionError, OSError):
+                pass
+        close(writer)
+        return
+    room.guests += 1
+    try:
+        await _pair_guest(room, reader, writer, greet)
+    finally:
+        room.guests -= 1
+
+
+async def _pair_guest(room, reader, writer, greet):
     sid = secrets.token_hex(16)
     fut = asyncio.get_running_loop().create_future()
     pending[sid] = fut

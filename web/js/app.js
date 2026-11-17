@@ -55,8 +55,8 @@ function renderPlaybar() {
   bar.classList.remove('hidden-bar');
   const inst = S.selected;
   const [value, text] = S.progress;
-  // импорт создаёт НОВУЮ сборку: в панели не показываем выбранную (иначе кажется, что файлы пишутся в неё)
-  const importing = busyState() && /^Импорт/.test(String(text || ''));
+  // задача создаёт НОВУЮ сборку (импорт, каталог, код): в панели не показываем выбранную (иначе кажется, что файлы пишутся в неё)
+  const importing = busyState() && !!S.taskNew;
   const shown = importing ? null : inst;
   const rgb = shown ? hexToRgb(shown.color).join(',') : '124,77,255';
   bar.style.setProperty('--pb-rgb', rgb);
@@ -121,6 +121,7 @@ function renderTitleInstance() {
 /* ---------------------------------------------------------------- события из Python */
 onEvent('log', (lines) => appendLogs(lines));
 onEvent('progress', ([v, t]) => { S.progress = [v, t]; updateProgress(); });
+onEvent('task_new', (v) => { S.taskNew = !!v; });
 // во время игры лаунчер не рисует анимации — видеокарта целиком отдаётся игре
 function setGamingMode(state) { document.body.classList.toggle('gaming', state === 'running' || state === 'preparing'); }
 onEvent('state', (state) => {
@@ -211,6 +212,11 @@ onEvent('lag_hint', (r) => {
   notice('lag:' + inst.id, { title: 'Игра подвисала', text: esc(r.text),
     actions: [{ label: 'Почему тормозит', primary: true, icon: 'zap', run: () => openLagCheck(inst) }] });
 });
+// перед запуском: мало свободной памяти, 32-битная или неподходящая Java (core/launch.py _check_resources)
+onEvent('launch_warning', (r) => {
+  if (!r || !r.text) return;
+  notice('launchwarn:' + r.kind, { title: 'Перед запуском', text: esc(r.text) });
+});
 // файлы лаунчера повреждены (core/integrity.py) — один раз за запуск предлагаем починить
 setTimeout(async () => {
   const h = await api.launcher_health().catch(() => null);
@@ -272,6 +278,7 @@ async function boot() {
   friendsPollStart();   // заявки в друзья и «друг открыл мир» всплывают окошками на любой вкладке
   openPackFile();       // сборку открыли двойным щелчком (.mrpack) — импортируем её
   applyAccent(S.config.accent);
+  applyTheme(S.config.theme); applyScale(S.config.ui_scale);
   setLanguage((S.config.ui || {}).lang);
   S.lobbyBg = (await safe(api.lobby_bg())) || '';
   $('#appVersion').textContent = 'v' + b.version;
@@ -304,6 +311,20 @@ async function boot() {
   };
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { closeDropdown(); if ($('#modalRoot').classList.contains('open')) closeModal(); }
+    const ctrl = e.ctrlKey || e.metaKey, typing = e.target.matches?.('input, textarea, select');
+    // масштаб: Ctrl + «+» / «−» / 0
+    if (ctrl && !e.altKey && ['=', '+', '-', '_', '0'].includes(e.key)) {
+      e.preventDefault();
+      const cur = +S.config.ui_scale || 100;
+      setScale(e.key === '0' ? 100 : cur + (e.key === '-' || e.key === '_' ? -5 : 5));
+      return;
+    }
+    // Alt+1…5 — вкладки по порядку; Ctrl+Enter — «Играть»
+    if (e.altKey && !ctrl && /^[1-9]$/.test(e.key) && !$('#modalRoot').classList.contains('open')) {
+      const tab = $$('#nav [data-page], #nav button')[+e.key - 1];
+      if (tab) { e.preventDefault(); tab.click(); }
+    }
+    if (ctrl && e.key === 'Enter' && !typing && !$('#modalRoot').classList.contains('open')) { e.preventDefault(); play(); }
     // F5 / Ctrl+R — обновляем только текущую страницу, а не весь лаунчер (иначе WebView перезагрузится целиком)
     if (e.key === 'F5' || ((e.ctrlKey || e.metaKey) && (e.key === 'r' || e.key === 'R' || e.key === 'к' || e.key === 'К'))) {
       e.preventDefault();
@@ -340,11 +361,19 @@ function showCrash(info) {
       <div class="crash-item"><div class="grow"><b>${esc(f.title)}</b><p class="small muted">${esc(f.text)}</p></div>
         ${f.fix ? `<button class="btn sm ${n ? '' : 'primary'}" data-fix="${n}">${esc(f.fix.label)}</button>` : ''}</div>`).join('')
       || '<div class="crash-item"><div class="grow"><b>Причину не удалось определить</b><p class="small muted">Посмотрите последние строки в консоли.</p></div></div>'}</div>
+    ${S.config.crash_stats_asked ? '' : `<div class="crash-item" id="statAsk"><div class="grow"><b>Присылать анонимную статистику падений?</b><p class="small muted">Только тип проблемы и версии лаунчера и игры — без ника, путей и названий модов. Это помогает находить частые вылеты. Изменить можно в «Настройках».</p></div><button class="btn sm primary" data-stat="1">Присылать</button><button class="btn sm" data-stat="0">Не надо</button></div>`}
     <div class="foot">${info.crash ? `<button class="btn ghost" data-a="report">${ic('file')} Отчёт о вылете</button>` : ''}
       <button class="btn ghost" data-a="logs">${ic('terminal')} Консоль</button>
       <button class="btn ghost" data-a="support">${ic('archive')} Отчёт для поддержки</button><div class="grow"></div>
       <button class="btn" data-close>Закрыть</button><button class="btn primary" data-a="play">${ic('play')} Запустить снова</button></div>`, { wide: true });
   m.onclick = async (e) => {
+    const statBtn = e.target.closest('[data-stat]');
+    if (statBtn) {
+      const yes = statBtn.dataset.stat === '1';
+      await safe(api.crash_stats_choice(yes)); S.config.crash_stats = yes; S.config.crash_stats_asked = true;
+      $('#statAsk', m)?.remove(); toast(yes ? 'Спасибо! Статистика включена' : 'Хорошо, ничего не отправляем', 'info', 2500);
+      return;
+    }
     const fixBtn = e.target.closest('[data-fix]');
     if (fixBtn) {
       const fix = items[+fixBtn.dataset.fix].fix;

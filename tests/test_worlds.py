@@ -78,6 +78,24 @@ class WorldTests(unittest.TestCase):
         self.assertEqual(W.restore_trash(self.game, self.trash, entry), "Alpha (2)")
         self.assertEqual((self.game / "saves" / "Alpha" / "level.dat").read_bytes(), b"NEW")
 
+    def test_two_manual_backups_in_same_second_keep_both(self):
+        # раньше вторая копия в ту же секунду перезаписывала первую (имя файла — только до секунды)
+        first = W.backup_world(self.game, "Alpha", self.backups)
+        (self.game / "saves" / "Alpha" / "level.dat").write_bytes(b"CHANGED")
+        second = W.backup_world(self.game, "Alpha", self.backups)
+        self.assertNotEqual(first, second)
+        self.assertEqual(len(list(self.backups.glob("*.zip"))), 2)
+
+    def test_two_trashed_worlds_in_same_second_stay_separate(self):
+        # раньше shutil.move клал второй мир внутрь первого (та же секунда и то же имя в корзине)
+        first = W.trash_world(self.game, "Alpha", self.trash)
+        (self.game / "saves" / "Alpha").mkdir()
+        (self.game / "saves" / "Alpha" / "level.dat").write_bytes(b"SECOND")
+        second = W.trash_world(self.game, "Alpha", self.trash)
+        self.assertNotEqual(first, second)
+        self.assertEqual(len(W.list_trash(self.trash)), 2)
+        self.assertFalse((self.trash / first / "Alpha").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

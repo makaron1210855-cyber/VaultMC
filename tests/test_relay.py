@@ -228,3 +228,25 @@ class RelayTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GuestLimitTests(unittest.TestCase):
+    def setUp(self):
+        reset_server()
+        self.hosts = []
+
+    def tearDown(self):
+        for h in self.hosts:
+            h.stop()
+
+    def test_room_refuses_guest_over_limit(self):
+        h = client.RelayHost(ECHO_PORT, lambda m: None, lambda p: None)
+        self.hosts.append(h)
+        h.start()
+        port = h.public_port
+        on_loop(lambda: setattr(srv.rooms[port], "guests", srv.MAX_GUESTS))   # комната заполнена
+        s, answer = line(f"JOIN {port} {h.token}")
+        s.close()
+        self.assertEqual(answer, "ERR busy")
+        on_loop(lambda: setattr(srv.rooms[port], "guests", 0))
+        self.assertEqual(srv.MAX_GUESTS, 10)

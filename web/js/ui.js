@@ -105,11 +105,27 @@ function openModal(contentHtml, { wide = false, onClose } = {}) {
   const modal = html(`<div class="modal ${wide ? 'wide' : ''}"><button class="btn ghost sm icon x" data-close>${ic('x')}</button>${contentHtml}</div>`);
   root.append(back, modal);
   root.classList.add('open');
-  const close = () => { root.classList.remove('open'); root.innerHTML = ''; onClose && onClose(); };
+  const prevFocus = document.activeElement;
+  modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true');
+  const close = () => {
+    root.classList.remove('open'); root.innerHTML = ''; onClose && onClose();
+    try { if (prevFocus && prevFocus.isConnected) prevFocus.focus(); } catch { /* фокус вернуть не вышло — не страшно */ }
+  };
   back.onclick = close;
   modal.querySelectorAll('[data-close]').forEach((b) => (b.onclick = close));
   hydrateIcons(modal);
   modal.close = close;
+  // клавиатура: Tab ходит по кругу внутри окна, фокус сразу в окне
+  const focusables = () => [...modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+    .filter((el) => !el.disabled && el.offsetParent !== null);
+  modal.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab') return;
+    const f = focusables(); if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+  setTimeout(() => { const f = focusables().filter((el) => !el.matches('[data-close]')); (f[0] || focusables()[0])?.focus({ preventScroll: true }); }, 30);
   return modal;
 }
 function closeModal() { const r = $('#modalRoot'); r.classList.remove('open'); r.innerHTML = ''; }
@@ -170,7 +186,7 @@ function syncSeg(seg) {
   if (!ink) { ink = document.createElement('i'); ink.className = 'seg-ink'; seg.prepend(ink); seg.classList.add('inked'); ink.style.transition = 'none'; }
   ink.style.opacity = '1';
   ink.style.width = on.offsetWidth + 'px';
-  ink.style.transform = `translateX(${on.offsetLeft - 4}px)`;
+  ink.style.transform = `translateX(${on.offsetLeft}px)`;
   if (ink.style.transition === 'none') requestAnimationFrame(() => { ink.style.transition = ''; });
 }
 function syncSegs(root = document) { $$('.seg', root).forEach(syncSeg); }

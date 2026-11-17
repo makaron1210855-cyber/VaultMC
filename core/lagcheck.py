@@ -77,7 +77,7 @@ def analyze(game_log: str, gc_log: str = "", ram_gb: int = 4, java_major: int = 
         level = "bad" if worst_ms >= 5000 or len(behind) >= 20 else "warn"
         findings.append({
             "level": level, "title": f"Игра «не успевала» {len(behind)} раз(а)",
-            "text": f"Самая долгая задержка — {worst_ms / 1000:.1f} с ({max(t for _, t in behind)} тиков). Так бывает, когда процессор "
+            "text": f"Самая долгая задержка — {worst_ms / 1000:.1f} сек ({max(t for _, t in behind)} тиков). Так бывает, когда процессор "
                     "или память не справляются: слишком большая прорисовка, много мобов и механизмов, тяжёлый мод или нехватка памяти.",
             "fix": {"action": "optimize", "arg": "", "label": "Открыть «Оптимизацию» сборки"}})
 
@@ -93,7 +93,7 @@ def analyze(game_log: str, gc_log: str = "", ram_gb: int = 4, java_major: int = 
             bits.append(f"{gc['full']} полных сборок мусора")
         findings.append({
             "level": "bad" if gc["over500"] or gc["full"] >= 5 else "warn", "title": "Игра подвисает из-за уборки памяти",
-            "text": f"Java убирала память с паузами: {', '.join(bits)}; самая длинная — {gc['max_ms'] / 1000:.2f} с. "
+            "text": f"Java убирала память с паузами: {', '.join(bits)}; самая длинная — {gc['max_ms'] / 1000:.2f} сек. "
                     f"Сейчас игре выделено {ram_gb} ГБ — при такой нагрузке этого мало. Добавьте памяти.",
             "fix": {"action": "ram", "arg": ram_gb + 2, "label": f"Выделить {ram_gb + 2} ГБ"}})
     elif gc["count"] and ram_gb >= 10 and gc["max_ms"] < 50 and mods_count < 40:
@@ -122,7 +122,7 @@ def analyze(game_log: str, gc_log: str = "", ram_gb: int = 4, java_major: int = 
     t = [(int(m[1]) * 3600 + int(m[2]) * 60 + int(m[3])) for m in (STARTED_RE.match(l) for l in lines) if m]
     stop = next((int(m[1]) * 3600 + int(m[2]) * 60 + int(m[3]) for m in (re.match(r"^\[(\d\d):(\d\d):(\d\d)\] \[.*?\]: (?:Reloading ResourceManager|Created: \d+x\d+x\d+ minecraft:textures/atlas)", l) for l in lines) if m), 0)
     if t and stop and 0 < stop - t[0] < 3600 and stop - t[0] >= 90:
-        findings.append({"level": "info", "title": f"Игра грузилась {stop - t[0]} с",
+        findings.append({"level": "info", "title": f"Игра грузилась {stop - t[0]} сек",
                          "text": "Долгая загрузка — обычно из-за большого числа модов или тяжёлых ресурспаков. Второй запуск быстрее (кэш), "
                                  "а на Java 19+ лаунчер ещё и кэширует классы.", "fix": None})
 

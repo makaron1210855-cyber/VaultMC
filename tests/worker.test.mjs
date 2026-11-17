@@ -560,3 +560,28 @@ test('P2P: ответ на чужое или несуществующее при
   const r = await post(e, '/api/p2p', { ...as('Host_1', TOKEN_A), action: 'answer', id: 'nosuchid1', sdp: 'y' });
   assert.equal(r.data.ignored, true);
 });
+
+test('статистика падений: анонимный отчёт считается, мусор отвергается, сводка закрыта без секрета', async () => {
+  const e = env();
+  const ok = { kind: 'oom', app: '6.4.21', mc: '1.20.1', loader: 'fabric' };
+  assert.equal((await post(e, '/api/stat', ok)).status, 200);
+  assert.equal((await post(e, '/api/stat', ok, '2.2.2.2')).status, 200);
+  for (const bad of [{ ...ok, kind: 'Ник Вася' }, { ...ok, app: 'x.y' }, { ...ok, loader: 'C:\Users' }, {}]) {
+    assert.equal((await post(e, '/api/stat', bad)).status, 400);
+  }
+  assert.equal((await worker.fetch(new Request('https://x.test/api/stats'), e)).status, 404);   // секрет не задан
+  e.STATS_KEY = 'secret-secret-123';
+  const res = await worker.fetch(new Request('https://x.test/api/stats', { headers: { 'x-stats-key': 'secret-secret-123' } }), e);
+  const rows = (await res.json()).rows;
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].n, 2);
+  const wrong = await worker.fetch(new Request('https://x.test/api/stats', { headers: { 'x-stats-key': 'nope-nope-nope-1' } }), e);
+  assert.equal(wrong.status, 404);
+});
+
+test('статистика падений: не больше 20 отчётов в сутки с одного адреса', async () => {
+  const e = env();
+  const ok = { kind: 'oom', app: '6.4.21', mc: '1.20.1', loader: 'fabric' };
+  for (let i = 0; i < 20; i++) assert.equal((await post(e, '/api/stat', ok, '9.9.9.9')).status, 200);
+  assert.equal((await post(e, '/api/stat', ok, '9.9.9.9')).status, 429);
+});

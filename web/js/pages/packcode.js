@@ -13,7 +13,7 @@ async function shareInstanceCode(inst) {
     <p class="muted small">Друг открывает «Сборки → По коду» и вводит этот код. Лаунчер сам поставит ту же версию игры, загрузчик${r.mods ? `, моды (${r.mods} шт. с Modrinth)` : ""} и настройки. Код работает 30 дней.</p>
     <div class="share-code mono">${esc(r.code)}</div>
     <p class="muted small">Или отправьте ссылку: друг откроет её, нажмёт «Открыть в VaultMC» — и лаунчер сам предложит поставить сборку. Если VaultMC у него ещё нет, на той же странице есть кнопка «Скачать».</p>
-    ${manual.length ? `<p class="note">${ic('alert')} Эти файлы не с Modrinth, в код они не входят — передайте их другу отдельно: <b>${manual.slice(0, 10).map(esc).join(', ')}${manual.length > 10 ? ` и ещё ${manual.length - 10}` : ''}</b></p>` : ''}
+    ${manual.length ? `<p class="note">${ic('alert')} Эти файлы не с Modrinth, в код они не входят — передайте их другу отдельно: <b>${manual.slice(0, 10).map(esc).join(', ')}${manual.length > 10 ? ` (+${manual.length - 10})` : ""}</b></p>` : ''}
     <div class="foot"><button class="btn ghost" data-close>Закрыть</button>
       <button class="btn" id="scLink">${ic('link')} Скопировать ссылку</button>
       <button class="btn primary" id="scCopy">${ic('copy')} Скопировать код</button></div>`;

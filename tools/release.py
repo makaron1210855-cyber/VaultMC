@@ -38,7 +38,7 @@ EXE = ROOT / "dist" / "VaultMC-Setup.exe"
 SITE = ROOT / "site"
 OUT = ROOT / "releases"
 
-MAJOR_TITLE = "⭐ МАСШТАБНОЕ ОБНОВЛЕНИЕ 6.0 — откат модов, надёжное прямое подключение и порядок в копиях миров"
+MAJOR_TITLE = "⭐ VaultMC 1.0 — первый стабильный выпуск: светлая тема, масштаб, клавиатура, блокировка игроков, уведомления Windows, разбор подвисаний"
 
 # что НЕ кладём в установщик (папка app)
 APP_SKIP_TOP = {"build", "dist", "releases", "site", "packaging", "server", "tests", ".git", ".venv", "venv", ".claude",
@@ -65,7 +65,7 @@ def log(msg: str) -> None:
 
 
 def app_version() -> str:
-    m = re.search(r'^APP_VERSION\s*=\s*"(\d+\.\d+\.\d+)"', (ROOT / "core" / "utils.py").read_text(encoding="utf-8"), re.M)
+    m = re.search(r'^APP_VERSION\s*=\s*"(\d+\.\d+(?:\.\d+)?)"', (ROOT / "core" / "utils.py").read_text(encoding="utf-8"), re.M)
     if not m:
         sys.exit("Не нашёл APP_VERSION в core/utils.py")
     return m.group(1)
@@ -153,7 +153,8 @@ def build_installer(version: str) -> Path:
     EXE.unlink(missing_ok=True)
     # /INPUTCHARSET UTF8: файл установщика — UTF-8 без BOM; без этого NSIS читал его в кодировке Windows,
     # и все русские надписи (окно установки, ярлыки, «Открыть с помощью») выходили кракозябрами
-    r = subprocess.run([find_makensis(), "-INPUTCHARSET", "UTF8", "-V2", f"-DVERSION={version}", NSI.name], cwd=NSI.parent,
+    nsis_version = version if version.count(".") == 2 else version + ".0"   # NSIS требует X.X.X: «7.0» → «7.0.0»
+    r = subprocess.run([find_makensis(), "-INPUTCHARSET", "UTF8", "-V2", f"-DVERSION={nsis_version}", NSI.name], cwd=NSI.parent,
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
     if r.returncode or not EXE.exists():
         sys.exit(f"NSIS не собрал установщик:\n{r.stdout[-3000:]}\n{r.stderr[-3000:]}")
@@ -172,6 +173,8 @@ def build_site(version: str, exe: Path) -> Path:
     s = page.read_text(encoding="utf-8")
     s = re.sub(r'(<span id="siteVer">)[^<]*(</span>)', rf"\g<1>{version}\g<2>", s)
     page.write_text(s, encoding="utf-8")
+    import siteversions                                # страница версий: все выпуски из changelog.py
+    siteversions.write(SITE, CHANGELOG, version)
     major = int(version.split(".")[0])
     changes = {v: lines for v, lines in CHANGELOG.items() if int(v.split(".")[0]) >= major - 2}
     info = {"version": version, "url": "VaultMC-Setup.exe", "sha256": hashlib.sha256(data).hexdigest(),
@@ -192,7 +195,7 @@ def build_site(version: str, exe: Path) -> Path:
         from core.updater import signature_ok
         ok = (info2["version"] == version and f'siteVer">{version}<' in z.read("index.html").decode("utf-8")
               and hashlib.sha256(z.read("VaultMC-Setup.exe")).hexdigest() == info2["sha256"]
-              and signature_ok(info2))
+              and signature_ok(info2) and "versions.html" in z.namelist())
     if not ok:
         sys.exit(f"Архив сайта собран неправильно: {site_zip}")
     log(f"сайт: {site_zip.name} ({site_zip.stat().st_size / 1048576:.1f} МБ)")

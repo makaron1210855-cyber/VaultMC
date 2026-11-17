@@ -72,7 +72,7 @@ class _Reader:
             return [self.take(">i") for _ in range(self.take(">i"))]
         if tag == TAG_LONG_ARRAY:
             return [self.take(">q") for _ in range(self.take(">i"))]
-        raise ValueError(f"неизвестный тег NBT {tag}")
+        raise ValueError(f"неизвестный тег NBT {tag}")  # i18n-skip: внутренняя ошибка разбора
 
 
 def read_nbt(data: bytes) -> dict:
@@ -80,7 +80,7 @@ def read_nbt(data: bytes) -> dict:
         data = gzip.decompress(data)
     r = _Reader(data)
     if r.take(">b") != TAG_COMPOUND:
-        raise ValueError("это не NBT")
+        raise ValueError("это не NBT")  # i18n-skip: внутренняя ошибка разбора
     r.string()
     return r.payload(TAG_COMPOUND)
 
@@ -150,10 +150,21 @@ def _world_dir(game_dir: Path, folder: str) -> Path:
 AUTO_TAG = " auto "      # «Мир auto 2026-11-17 10-00-00.zip» — автокопия после игры (их хранится меньше)
 
 
+def _free_stamp(path_for) -> Path:
+    """Путь с датой-временем, которого ещё нет. Если такой файл уже есть (два действия в одну секунду),
+    берём следующую секунду — прежняя копия или мир в корзине не затираются."""
+    now = time.time()
+    for n in range(3600):
+        path = path_for(time.strftime("%Y-%m-%d %H-%M-%S", time.localtime(now + n)))
+        if not path.exists():
+            return path
+    raise OSError("Не удалось подобрать имя для копии мира")
+
+
 def backup_world(game_dir: Path, folder: str, backups_dir: Path, auto: bool = False) -> Path:
     src = _world_dir(game_dir, folder)
     backups_dir.mkdir(parents=True, exist_ok=True)
-    dest = backups_dir / f"{src.name}{AUTO_TAG if auto else ' '}{time.strftime('%Y-%m-%d %H-%M-%S')}.zip"
+    dest = _free_stamp(lambda st: backups_dir / f"{src.name}{AUTO_TAG if auto else ' '}{st}.zip")
     tmp = dest.with_suffix(".part")
     try:
         with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED, compresslevel=5) as zf:
@@ -235,7 +246,7 @@ def trash_world(game_dir: Path, folder: str, trash_dir: Path) -> str:
     """Удалить мир: он не стирается, а уходит в корзину сборки на TRASH_DAYS дней."""
     src = _world_dir(game_dir, folder)
     trash_dir.mkdir(parents=True, exist_ok=True)
-    dest = trash_dir / f"{src.name} {time.strftime('%Y-%m-%d %H-%M-%S')}"
+    dest = _free_stamp(lambda st: trash_dir / f"{src.name} {st}")
     shutil.move(str(src), str(dest))
     return dest.name
 

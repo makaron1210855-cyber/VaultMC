@@ -2,7 +2,6 @@
  * Логика — core/lagcheck.py, jvmreport.py, netcheck.py, supportreport.py. Ничего не меняет без нажатия кнопки.
  */
 
-const DIAG_LEVEL = { bad: ['alert', 'Плохо'], warn: ['alert', 'Стоит поправить'], info: ['file', 'К сведению'] };
 
 /** Карточка «Диагностика» на вкладке «Оптимизация» сборки. */
 function diagCardHtml() {

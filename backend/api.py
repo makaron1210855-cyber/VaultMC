@@ -461,7 +461,7 @@ class Api:
             return {}
         try:
             servers = [s for s in list_servers(inst.game_dir) if not s["name"].startswith(self.GUEST_SERVER_PREFIX)]
-            save_servers(inst.game_dir, [{"name": f"{self.GUEST_SERVER_PREFIX}мир {host}", "ip": f"127.0.0.1:{int(port)}"}] + servers)
+            save_servers(inst.game_dir, [{"name": f"{self.GUEST_SERVER_PREFIX}{host}", "ip": f"127.0.0.1:{int(port)}"}] + servers)
             self._guest_server = inst.id
         except Exception as exc:  # noqa: BLE001
             _log(f"guest server: {exc}")
@@ -547,6 +547,16 @@ class Api:
         if info.get("code") not in (0, None) and not info.get("killed"):
             info["instance"] = inst.id if inst else ""
             info["analysis"] = self._analyze_crash(info, inst)
+            if self._cfg.crash_stats:     # только с согласия игрока; в отчёте нет ника, путей и модов (core/crashstats.py)
+                from core import crashstats
+                crashstats.send_async(info["analysis"], APP_VERSION, inst.game_version if inst else "", inst.loader if inst else "")
+
+    def crash_stats_choice(self, yes: bool) -> dict:
+        """Ответ игрока на вопрос в окне вылета: присылать ли анонимную статистику падений."""
+        self._cfg.crash_stats = bool(yes)
+        self._cfg.crash_stats_asked = True
+        self._save()
+        return {"ok": True}
 
     def _lag_hint(self, inst) -> None:
         """Игра шла 5+ минут — смотрим журналы; если много подвисаний, подсказываем кнопку «Почему тормозит»."""
@@ -1031,6 +1041,9 @@ class Api:
                     value = int(value)
                 setattr(self._cfg, key, value)
         self._cfg.ram_gb = max(RAM_MIN, min(RAM_MAX, self._cfg.ram_gb))
+        self._cfg.ui_scale = max(90, min(125, self._cfg.ui_scale))
+        if self._cfg.theme not in ("dark", "light", "auto"):
+            self._cfg.theme = "dark"
         if "data_dir" in values:
             self._repo.game_dir = Path(self._cfg.data_dir)
         self._save()
@@ -1815,7 +1828,7 @@ class Api:
                                         lambda m: self._on_runner_event("log", m))
             self._sync_mods_bg(inst)
             return {**_instance_dict(inst, self._repo.game_dir), "problems": problems}
-        started = self._runner.run_task(f"Импорт {Path(path).name}...", job, "modpack_installed")
+        started = self._runner.run_task(f"Импорт {Path(path).name}...", job, "modpack_installed", new_instance=True)
         return {"started": True} if started else {"error": "Дождитесь окончания текущей операции"}
 
     def share_instance(self, instance_id: str) -> dict:
@@ -1858,7 +1871,7 @@ class Api:
             inst, problems = install_shared(pack, self._instances, self._cf_key, log)
             self._sync_mods_bg(inst)
             return {**_instance_dict(inst, self._repo.game_dir), "problems": problems}
-        started = self._runner.run_task(f"Сборка по коду {code}...", job, "modpack_installed")
+        started = self._runner.run_task(f"Сборка по коду {code}...", job, "modpack_installed", new_instance=True)
         return {"started": True, "name": pack.get("name", ""), "by": data.get("by", "")} if started \
             else {"error": "Дождитесь окончания текущей операции"}
 
@@ -2497,7 +2510,7 @@ class Api:
                     return _instance_dict(inst, self._repo.game_dir)
                 finally:   # скачанный архив сборки больше не нужен — не копим его во временной папке
                     shutil.rmtree(tmp, ignore_errors=True)
-            started = self._runner.run_task(f"Установка сборки {title}...", job, "modpack_installed")
+            started = self._runner.run_task(f"Установка сборки {title}...", job, "modpack_installed", new_instance=True)
             if not started:   # job не запустится — временную папку никто не уберёт
                 shutil.rmtree(tmp, ignore_errors=True)
             return {"ok": started} if started else {"error": "Дождитесь окончания текущей операции"}

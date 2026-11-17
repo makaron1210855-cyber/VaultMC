@@ -70,6 +70,7 @@ function p2pPipe(dc, wsUrl, stat = { rx: 0, tx: 0, q: 0, buf: 0 }) {
 }
 
 
+// i18n-skip-start: две функции ниже пишут только в консоль для разработчика, интерфейс их текст не показывает
 /** Сколько адресов каждого типа собрал браузер (relay = достучались до ретранслятора Cloudflare) + смена состояний ICE. */
 function p2pIceDiag(pc, label) {
   const log = (t) => safe(api.p2p_log(`${label}: ${t}`));
@@ -119,6 +120,7 @@ function p2pMonitor(pc, label, stat) {
   }, 5000);
   return iv;
 }
+// i18n-skip-end
 
 /* ---------------------------------------------------------------- хозяин */
 async function p2pHostStart(url) {
@@ -142,8 +144,8 @@ async function p2pAnswer(st, offer) {
   const pc = new RTCPeerConnection({ iceServers: await p2pIce() });
   st.peers[offer.id] = pc;
   const stat = { rx: 0, tx: 0, q: 0, buf: 0 };
-  p2pMonitor(pc, `друг ${offer.from}`, stat);
-  p2pIceDiag(pc, `друг ${offer.from}`);
+  p2pMonitor(pc, `друг ${offer.from}`, stat); // i18n-skip: журнал
+  p2pIceDiag(pc, `друг ${offer.from}`); // i18n-skip: журнал
   pc.ondatachannel = (e) => {
     const dc = e.channel;
     if (dc.label === 'hello') return;
@@ -188,13 +190,13 @@ async function p2pJoin(host, onStatus = () => {}, code = '', limitMs = 130000) {
   const pc = new RTCPeerConnection({ iceServers: ice, iceTransportPolicy: viaRelay ? 'relay' : 'all' });
   const st = { pc, ctl: null, host, stat: { rx: 0, tx: 0, q: 0, buf: 0 } };
   P2P.guest = st;
-  p2pMonitor(pc, `подключение к ${host}`, st.stat);
-  const iceCount = p2pIceDiag(pc, `подключение к ${host}`);
+  p2pMonitor(pc, `подключение к ${host}`, st.stat); // i18n-skip: журнал
+  const iceCount = p2pIceDiag(pc, `подключение к ${host}`); // i18n-skip: журнал
   pc.createDataChannel('hello');                       // без канала в приглашении не будет раздела для данных
   await pc.setLocalDescription(await pc.createOffer());
   onStatus('Ищу путь до друга...');
   await p2pGathered(pc);
-  safe(api.p2p_log(`подключение к ${host}: ${iceCount()}`));
+  safe(api.p2p_log(`подключение к ${host}: ${iceCount()}`)); // i18n-skip: журнал
   const id = p2pId();
   const offer = { type: pc.localDescription.type, sdp: pc.localDescription.sdp };
   const sent = await api.p2p_offer(host, id, offer, code);
@@ -209,7 +211,7 @@ async function p2pJoin(host, onStatus = () => {}, code = '', limitMs = 130000) {
   while (Date.now() < deadline && P2P.guest === st) {
     await new Promise((r) => setTimeout(r, 2500));
     if (P2P.guest !== st) break;
-    onStatus(`Жду ответа от ${host}... ${Math.round((Date.now() - started) / 1000)} из ${Math.round(limitMs / 1000)} с`);
+    onStatus(`Жду ответа от ${host}... ${Math.round((Date.now() - started) / 1000)} из ${Math.round(limitMs / 1000)} сек`);
     const r = await safe(api.p2p_poll(host, id)) || { error: 'Нет связи с сервером VaultMC' };
     // одна «моргнувшая» связь не должна обрывать ожидание, которое длится до двух минут — сдаёмся после нескольких неудач подряд
     if (r.error) { if (++pollFails >= 5) throw new Error(r.error); continue; }

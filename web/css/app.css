@@ -14,7 +14,8 @@
   --panel3: #1d222d;
   --line: #1f2430;
   --line2: #2c3240;
-  --edge: rgba(255, 255, 255, .05);
+  --ov: 255, 255, 255;
+  --edge: rgba(var(--ov), .05);
   --text: #f1f3f8;
   --muted: #98a0b1;
   --faint: #5d6576;
@@ -70,7 +71,7 @@ body::after {   /* тонкая светящаяся линия под верх�
 
 /* плита — основная поверхность: матовая, без рамки-гравировки, с мягкой тенью */
 .plate {
-  background: linear-gradient(180deg, rgba(255, 255, 255, .03), rgba(255, 255, 255, 0) 45%), var(--panel);
+  background: linear-gradient(180deg, rgba(var(--ov), .03), rgba(var(--ov), 0) 45%), var(--panel);
   border: 1px solid var(--line); border-radius: var(--radius);
   box-shadow: inset 0 1px 0 var(--edge), 0 18px 40px rgba(0, 0, 0, .32);
 }
@@ -87,7 +88,7 @@ body::after {   /* тонкая светящаяся линия под верх�
 .tb-brand em { font-style: normal; font-size: 10.5px; font-weight: 700; color: var(--faint); padding: 2px 7px; border-radius: 99px; background: var(--panel2); }
 
 .tabs { position: relative; display: flex; align-items: center; gap: 2px; padding: 5px; margin: 0 auto;
-  border-radius: 16px; background: rgba(255, 255, 255, .035); border: 1px solid var(--line); }
+  border-radius: 16px; background: rgba(var(--ov), .035); border: 1px solid var(--line); }
 .tabs button { position: relative; z-index: 1; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: 12px;
   font-weight: 700; font-size: 13.5px; color: var(--muted); transition: color .2s; }
 .tabs button i { width: 17px; height: 17px; }
@@ -104,7 +105,7 @@ body::after {   /* тонкая светящаяся линия под верх�
 .tabs button.active .tab-badge { background: rgba(0, 0, 0, .28); color: var(--on-accent); }
 
 .tb-right { display: flex; align-items: center; gap: 8px; flex: none; }
-.tb-tools { display: flex; gap: 2px; padding: 4px; border-radius: 14px; background: rgba(255, 255, 255, .03); border: 1px solid var(--line); }
+.tb-tools { display: flex; gap: 2px; padding: 4px; border-radius: 14px; background: rgba(var(--ov), .03); border: 1px solid var(--line); }
 .tb-tools button { width: 36px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--muted); transition: .15s; }
 .tb-tools button:hover { color: var(--text); background: var(--panel3); }
 .tb-tools button.active { color: var(--on-accent); background: var(--accent); }
@@ -120,7 +121,7 @@ body::after {   /* тонкая светящаяся линия под верх�
 .tb-online canvas:first-child { margin-left: 0; }
 /* связь с другом во время игры (web/js/net.js): точка-цвет + задержка, подробности — в подсказке */
 .net-chip { display: none; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 10px; font-size: 12px; font-weight: 800;
-  background: var(--panel3); border: 1px solid var(--line, rgba(255, 255, 255, .08)); color: var(--muted, #9aa3b2); white-space: nowrap; }
+  background: var(--panel3); border: 1px solid var(--line, rgba(var(--ov), .08)); color: var(--muted, #9aa3b2); white-space: nowrap; }
 .net-chip.on { display: inline-flex; }
 .net-chip i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 .net-chip.good { color: var(--ok); } .net-chip.mid { color: var(--warn); } .net-chip.bad { color: var(--err); }
@@ -140,7 +141,7 @@ body::after {   /* тонкая светящаяся линия под верх�
 
 .account-chip {
   display: flex; align-items: center; gap: 10px; height: 42px; padding: 3px 12px 3px 3px; cursor: pointer;
-  background: rgba(255, 255, 255, .035); border: 1px solid var(--line); border-radius: 14px; transition: .2s var(--ease);
+  background: rgba(var(--ov), .035); border: 1px solid var(--line); border-radius: 14px; transition: .2s var(--ease);
 }
 .account-chip:hover { border-color: var(--line2); background: var(--panel2); }
 .account-chip canvas { width: 34px; height: 34px; border-radius: 10px; image-rendering: pixelated; background: var(--panel3); }
@@ -161,7 +162,7 @@ body::after {   /* тонкая светящаяся линия под верх�
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
 .pages { position: relative; flex: 1; min-height: 0; }
 .page {
-  position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; padding: 2px 8px 10px 2px;
+  position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; padding: 2px 8px 10px; scrollbar-gutter: stable;
   animation: page-in .34s var(--ease) both;
 }
 .page.leaving { animation: page-out .16s ease both; pointer-events: none; }
@@ -182,7 +183,7 @@ body::after {   /* тонкая светящаяся линия под верх�
 .spacer { height: 12px; }
 
 .card {
-  background: linear-gradient(180deg, rgba(255, 255, 255, .025), rgba(255, 255, 255, 0) 40%), var(--panel);
+  background: linear-gradient(180deg, rgba(var(--ov), .025), rgba(var(--ov), 0) 40%), var(--panel);
   border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; box-shadow: inset 0 1px 0 var(--edge);
 }
 .card + .card { margin-top: 12px; }
@@ -290,10 +291,10 @@ input[type=range]::-webkit-slider-thumb {
   position: relative; overflow: hidden; display: grid; grid-template-columns: minmax(340px, 1.1fr) minmax(260px, .9fr);
   background:
     radial-gradient(700px 420px at 0% 100%, color-mix(in srgb, var(--inst-color, var(--accent)) 22%, transparent), transparent 70%),
-    linear-gradient(180deg, rgba(255, 255, 255, .025), transparent 40%), var(--panel);
+    linear-gradient(180deg, rgba(var(--ov), .025), transparent 40%), var(--panel);
 }
 .hero::after { /* тонкая «гравировка» по краю, как на дверце сейфа */
-  content: ""; position: absolute; inset: 10px; border-radius: 12px; border: 1px dashed rgba(255, 255, 255, .05); pointer-events: none;
+  content: ""; position: absolute; inset: 10px; border-radius: 12px; border: 1px dashed rgba(var(--ov), .05); pointer-events: none;
 }
 .hero-info { position: relative; z-index: 2; display: flex; flex-direction: column; justify-content: center; gap: 14px; padding: 28px 30px; }
 .kicker { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 800; letter-spacing: 1.6px; color: var(--muted); }
@@ -303,12 +304,12 @@ input[type=range]::-webkit-slider-thumb {
 .link-btn:hover { text-decoration: underline; }
 .hero-title { display: flex; align-items: center; gap: 16px; }
 .hero-title canvas { width: 64px; height: 64px; border-radius: 16px; image-rendering: pixelated; flex: none;
-  box-shadow: 0 8px 22px rgba(0, 0, 0, .45), 0 0 0 1px rgba(255, 255, 255, .08); }
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .45), 0 0 0 1px rgba(var(--ov), .08); }
 .hero-title h1 { margin: 0; font-size: clamp(26px, 3.4vw, 40px); line-height: 1.05; font-weight: 900; letter-spacing: -.8px;
   overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .hero-meta { display: flex; flex-wrap: wrap; gap: 6px; }
 .hero-meta span { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--muted);
-  padding: 5px 10px; border-radius: 999px; background: rgba(255, 255, 255, .04); border: 1px solid var(--line); }
+  padding: 5px 10px; border-radius: 999px; background: rgba(var(--ov), .04); border: 1px solid var(--line); }
 .hero-meta i { width: 13px; height: 13px; }
 .big-play { display: flex; flex-direction: column; gap: 8px; max-width: 440px; margin-top: 6px; }
 .big-play .btn.play { position: relative; overflow: hidden; height: 66px; font-size: 22px; font-weight: 900; letter-spacing: .3px;
@@ -429,7 +430,7 @@ input[type=range]::-webkit-slider-thumb {
 .playbar .pb-name b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .playbar .pb-status small span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pb-actions { display: flex; gap: 6px; flex: none; }
-.pb-actions .btn { border-radius: 13px; background: rgba(255, 255, 255, .04); }
+.pb-actions .btn { border-radius: 13px; background: rgba(var(--ov), .04); }
 .pb-actions .btn > i { display: none; }
 @container (max-width: 980px) {
   .pb-actions .btn { width: 42px; padding: 0; }
@@ -464,8 +465,8 @@ input[type=range]::-webkit-slider-thumb {
 .inst-card:hover .quick { opacity: 1; }
 .inst-card.add, .inst-card.placeholder { justify-content: center; flex-direction: column; border-style: dashed; background: transparent; color: var(--muted); min-height: 88px; }
 .inst-card.add i { width: 26px; height: 26px; }
-.inst-card.placeholder { cursor: default; opacity: 1; border-color: rgba(255, 255, 255, .05);
-  background: repeating-linear-gradient(135deg, rgba(255, 255, 255, .018) 0 10px, transparent 10px 20px); } /* пустая ячейка хранилища */
+.inst-card.placeholder { cursor: default; opacity: 1; border-color: rgba(var(--ov), .05);
+  background: repeating-linear-gradient(135deg, rgba(var(--ov), .018) 0 10px, transparent 10px 20px); } /* пустая ячейка хранилища */
 /* аккуратная карточка: длинное имя обрезается «…», мета-строка переносится, кнопки не лежат на тексте */
 .inst-card > .grow { min-width: 0; flex: 1; }
 .inst-card b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: -.1px; padding-right: 4px; }
@@ -530,7 +531,7 @@ input[type=range]::-webkit-slider-thumb {
 .accents { display: flex; gap: 10px; }
 .accents button { width: 30px; height: 30px; border-radius: 50%; border: 2px solid transparent; transition: transform .2s var(--ease); }
 .accents button:hover { transform: scale(1.12); }
-.accents button.on { border-color: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, .15); }
+.accents button.on { border-color: #fff; box-shadow: 0 0 0 3px rgba(var(--ov), .15); }
 
 /* ---------------------------------------------------------------- консоль */
 .log {
@@ -773,7 +774,7 @@ canvas.photo { image-rendering: auto !important; object-fit: cover; }
 .sk-views { display: flex; justify-content: center; gap: 14px; }
 .sk-views > div { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .sk-views canvas { width: 180px; height: 324px; image-rendering: pixelated; cursor: crosshair; border-radius: 12px;
-  background: repeating-conic-gradient(rgba(255,255,255,.025) 0 25%, transparent 0 50%) 0 0 / 18px 18px; }
+  background: repeating-conic-gradient(rgba(var(--ov), .025) 0 25%, transparent 0 50%) 0 0 / 18px 18px; }
 .sk-views small { color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
 .sk-save { display: flex; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
 .sk-panel { padding: 16px; min-height: 420px; }
@@ -845,7 +846,7 @@ body.win-max .rz { display: none; }
 .sk-3d { position: relative; height: 340px; }
 .s3-wrap { display: flex; flex-direction: column; }
 .s3-scene { flex: 1; perspective: 900px; display: grid; place-items: center; cursor: grab; touch-action: none; user-select: none;
-  border-radius: 12px; background: repeating-conic-gradient(rgba(255,255,255,.025) 0 25%, transparent 0 50%) 0 0 / 18px 18px; overflow: hidden; }
+  border-radius: 12px; background: repeating-conic-gradient(rgba(var(--ov), .025) 0 25%, transparent 0 50%) 0 0 / 18px 18px; overflow: hidden; }
 .s3-scene.grab { cursor: grabbing; }
 .s3-root { position: relative; width: 0; height: 0; transform-style: preserve-3d; }
 .s3-pivot, .s3-off, .s3-box { position: absolute; left: 0; top: 0; transform-style: preserve-3d; }
@@ -863,7 +864,7 @@ body.win-max .rz { display: none; }
 /* автонастройка */
 .at-card { margin-bottom: 14px; }
 .at-grid { display: grid; grid-template-columns: 0.7fr 1.6fr 1.6fr 0.8fr; gap: 10px; margin-top: 14px; }
-.at-grid > div { padding: 10px 12px; border-radius: 10px; background: var(--panel-2, rgba(255,255,255,.03)); border: 1px solid var(--line);
+.at-grid > div { padding: 10px 12px; border-radius: 10px; background: var(--panel-2, rgba(var(--ov), .03)); border: 1px solid var(--line);
   display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .at-grid small { color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
 .at-grid b { font-size: 13px; overflow-wrap: anywhere; }
@@ -1002,7 +1003,7 @@ kbd { display: inline-block; padding: 1px 7px; border-radius: 6px; font: 700 12p
 
 /* ---------------------------------------------------------------- VaultMC 6: общий вид */
 .h1 { font-size: 28px; font-weight: 900; letter-spacing: -.6px; }
-.card { border-radius: var(--radius); background: linear-gradient(180deg, rgba(255, 255, 255, .03), rgba(255, 255, 255, 0) 45%), var(--panel);
+.card { border-radius: var(--radius); background: linear-gradient(180deg, rgba(var(--ov), .03), rgba(var(--ov), 0) 45%), var(--panel);
   box-shadow: inset 0 1px 0 var(--edge), 0 14px 34px rgba(0, 0, 0, .22); }
 .btn { border-radius: var(--radius-sm); }
 .btn.primary { background: linear-gradient(180deg, var(--accent-2), var(--accent)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35); }
@@ -1029,12 +1030,12 @@ kbd { display: inline-block; padding: 1px 7px; border-radius: 6px; font: 700 12p
   --panel3: #1f1c35;
   --line: #24213b;
   --line2: #34305a;
-  --edge: rgba(255, 255, 255, .06);
+  --edge: rgba(var(--ov), .06);
   --text: #f4f3fb;
   --muted: #a6a2c4;
   --faint: #6b6790;
-  --glass: rgba(255, 255, 255, .035);
-  --glass2: rgba(255, 255, 255, .06);
+  --glass: rgba(var(--ov), .035);
+  --glass2: rgba(var(--ov), .06);
   --violet: 139, 92, 246;
   --radius: 22px;
   --radius-sm: 14px;
@@ -1061,7 +1062,7 @@ body::before {
 body.gaming::before, body.ui-idle::before { animation-play-state: paused; }
 /* лёгкое «зерно» поверх — фон не выглядит пластиковым */
 .shell::before { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: -1; opacity: .35;
-  background-image: radial-gradient(rgba(255, 255, 255, .045) 1px, transparent 1px); background-size: 3px 3px; }
+  background-image: radial-gradient(rgba(var(--ov), .045) 1px, transparent 1px); background-size: 3px 3px; }
 body::after { background: linear-gradient(90deg, transparent, rgba(var(--accent-rgb), .45) 30%, rgba(var(--violet), .4) 70%, transparent); }
 
 /* ---------------------------------------------------------------- плиты и карточки: стекло с кромкой-градиентом */
@@ -1071,17 +1072,17 @@ body::after { background: linear-gradient(90deg, transparent, rgba(var(--accent-
 .card, .plate, .fr-join, .sk-stage, .sk-panel {
   background:
     radial-gradient(420px circle at var(--mx, 50%) var(--my, -40%), rgba(var(--accent-rgb), calc(.07 * var(--spot-a))), transparent 60%),
-    linear-gradient(160deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, .012) 55%) padding-box,
-    linear-gradient(160deg, rgba(255, 255, 255, .14), rgba(255, 255, 255, .03) 40%, rgba(var(--violet), .16)) border-box;
+    linear-gradient(160deg, rgba(var(--ov), .055), rgba(var(--ov), .012) 55%) padding-box,
+    linear-gradient(160deg, rgba(var(--ov), .14), rgba(var(--ov), .03) 40%, rgba(var(--violet), .16)) border-box;
   border: 1px solid transparent; border-radius: var(--radius);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, .04) inset, 0 20px 50px -20px rgba(0, 0, 0, .7);
+  box-shadow: 0 1px 0 rgba(var(--ov), .04) inset, 0 20px 50px -20px rgba(0, 0, 0, .7);
 }
 /* главный экран: своя подсветка цветом сборки поверх стекла */
 .plate.hero {
   background:
     radial-gradient(700px 420px at 0% 100%, color-mix(in srgb, var(--inst-color, var(--accent)) 26%, transparent), transparent 70%) padding-box,
-    linear-gradient(160deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, .012) 55%) padding-box,
-    linear-gradient(160deg, rgba(255, 255, 255, .14), rgba(255, 255, 255, .03) 40%, rgba(var(--violet), .16)) border-box;
+    linear-gradient(160deg, rgba(var(--ov), .055), rgba(var(--ov), .012) 55%) padding-box,
+    linear-gradient(160deg, rgba(var(--ov), .14), rgba(var(--ov), .03) 40%, rgba(var(--violet), .16)) border-box;
 }
 .card + .card { margin-top: 14px; }
 .card-title { font-size: 15.5px; font-weight: 800; letter-spacing: -.1px; display: flex; align-items: center; gap: 8px; }
@@ -1103,12 +1104,12 @@ body::after { background: linear-gradient(90deg, transparent, rgba(var(--accent-
 .btn {
   position: relative; overflow: hidden; isolation: isolate;
   height: 40px; padding: 0 18px; border-radius: 999px; font-weight: 750; letter-spacing: .1px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, .08), rgba(255, 255, 255, .03));
-  border: 1px solid rgba(255, 255, 255, .09); color: var(--text);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, .06) inset, 0 6px 16px -10px rgba(0, 0, 0, .8);
+  background: linear-gradient(180deg, rgba(var(--ov), .08), rgba(var(--ov), .03));
+  border: 1px solid rgba(var(--ov), .09); color: var(--text);
+  box-shadow: 0 1px 0 rgba(var(--ov), .06) inset, 0 6px 16px -10px rgba(0, 0, 0, .8);
   transition: transform .3s var(--spring), background .2s, border-color .2s, box-shadow .25s, opacity .2s, filter .2s;
 }
-.btn:hover { background: linear-gradient(180deg, rgba(255, 255, 255, .12), rgba(255, 255, 255, .05)); border-color: rgba(255, 255, 255, .16); transform: translateY(-1px); }
+.btn:hover { background: linear-gradient(180deg, rgba(var(--ov), .12), rgba(var(--ov), .05)); border-color: rgba(var(--ov), .16); transform: translateY(-1px); }
 .btn:active { transform: translateY(0) scale(.96); transition-duration: .08s; }
 .btn:disabled { opacity: .4; transform: none; filter: grayscale(.4); }
 .btn.sm { height: 32px; padding: 0 13px; border-radius: 999px; }
@@ -1125,20 +1126,20 @@ body::after { background: linear-gradient(90deg, transparent, rgba(var(--accent-
 .btn.primary::after { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
   background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, .45) 50%, transparent 65%); transform: translateX(-120%); }
 .btn.primary:hover::after { transform: translateX(120%); transition: transform .7s var(--ease); }
-.btn.ghost { background: transparent; border-color: rgba(255, 255, 255, .08); box-shadow: none; }
-.btn.ghost:hover { background: rgba(255, 255, 255, .06); }
+.btn.ghost { background: transparent; border-color: rgba(var(--ov), .08); box-shadow: none; }
+.btn.ghost:hover { background: rgba(var(--ov), .06); }
 .btn.danger { background: rgba(240, 75, 75, .08); border-color: rgba(240, 75, 75, .45); color: #ff9090; box-shadow: none; }
 .btn.danger:hover { background: rgba(240, 75, 75, .16); }
 .ripple { position: absolute; z-index: -1; border-radius: 50%; pointer-events: none; transform: scale(0); opacity: .45;
-  background: radial-gradient(circle, rgba(255, 255, 255, .7), rgba(255, 255, 255, 0) 70%); animation: ripple .6s var(--ease) forwards; }
+  background: radial-gradient(circle, rgba(255, 255, 255, .7), rgba(var(--ov), 0) 70%); animation: ripple .6s var(--ease) forwards; }
 @keyframes ripple { to { transform: scale(1); opacity: 0; } }
 
 /* ---------------------------------------------------------------- поля ввода */
 .input, select.input, textarea.input {
-  height: 42px; border-radius: var(--radius-sm); background: rgba(0, 0, 0, .28); border: 1px solid rgba(255, 255, 255, .08);
+  height: 42px; border-radius: var(--radius-sm); background: rgba(0, 0, 0, .28); border: 1px solid rgba(var(--ov), .08);
   transition: border-color .2s, box-shadow .3s var(--ease), background .2s;
 }
-.input:hover { border-color: rgba(255, 255, 255, .14); }
+.input:hover { border-color: rgba(var(--ov), .14); }
 .input:focus { background: rgba(0, 0, 0, .38); border-color: rgba(var(--accent-rgb), .8); box-shadow: 0 0 0 4px rgba(var(--accent-rgb), .14), 0 0 24px -6px rgba(var(--accent-rgb), .5); }
 label.field > span, div.field > span { font-size: 11.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
 select.input { appearance: none; padding-right: 36px; cursor: pointer;
@@ -1147,12 +1148,12 @@ select.input { appearance: none; padding-right: 36px; cursor: pointer;
 select.input option { background: var(--panel2); }
 
 /* ---------------------------------------------------------------- переключатели с бегущей подложкой (.seg) */
-.seg { position: relative; padding: 4px; gap: 2px; border-radius: 999px; background: rgba(0, 0, 0, .3); border: 1px solid rgba(255, 255, 255, .07); }
+.seg { position: relative; padding: 4px; gap: 2px; border-radius: 999px; background: rgba(0, 0, 0, .3); border: 1px solid rgba(var(--ov), .07); }
 .seg button { position: relative; z-index: 1; height: 34px; padding: 0 16px; border-radius: 999px; transition: color .25s; }
-.seg button.on { color: var(--text); background: rgba(255, 255, 255, .12); box-shadow: none; }
+.seg button.on { color: var(--text); background: rgba(var(--ov), .12); box-shadow: none; }
 .seg.accent button.on { color: var(--on-accent); background: var(--accent); }
 .seg-ink { position: absolute; z-index: 0; top: 4px; left: 0; height: calc(100% - 8px); border-radius: 999px; pointer-events: none;
-  background: linear-gradient(180deg, rgba(255, 255, 255, .16), rgba(255, 255, 255, .07)); box-shadow: 0 0 0 1px rgba(255, 255, 255, .1) inset, 0 6px 14px -6px rgba(0, 0, 0, .6);
+  background: linear-gradient(180deg, rgba(var(--ov), .16), rgba(var(--ov), .07)); box-shadow: 0 0 0 1px rgba(var(--ov), .1) inset, 0 6px 14px -6px rgba(0, 0, 0, .6);
   transition: transform .45s var(--spring), width .45s var(--spring); }
 .seg.accent .seg-ink { background: linear-gradient(135deg, var(--accent-2), var(--accent)); box-shadow: 0 6px 18px -6px rgba(var(--accent-rgb), .7); }
 .seg.inked button.on { background: transparent !important; box-shadow: none !important; }
@@ -1160,7 +1161,7 @@ select.input option { background: var(--panel2); }
 /* ---------------------------------------------------------------- флажки и тумблеры */
 .check .box { border-radius: 7px; transition: transform .35s var(--spring), background .2s, border-color .2s; }
 .check input:checked + .box { transform: scale(1.08); background: linear-gradient(135deg, var(--accent-2), var(--accent)); box-shadow: 0 0 14px -2px rgba(var(--accent-rgb), .7); }
-.switch .track { width: 44px; height: 24px; background: rgba(255, 255, 255, .12); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .5); }
+.switch .track { width: 44px; height: 24px; background: rgba(var(--ov), .12); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .5); }
 .switch .track::after { top: 3px; left: 3px; width: 18px; height: 18px; box-shadow: 0 2px 6px rgba(0, 0, 0, .5); transition: transform .45s var(--spring), width .2s; }
 .switch:active .track::after { width: 22px; }
 .switch input:checked + .track { background: linear-gradient(135deg, var(--accent-2), var(--accent)); box-shadow: 0 0 16px -4px rgba(var(--accent-rgb), .8); }
@@ -1171,22 +1172,22 @@ input[type=range]::-webkit-slider-thumb { width: 20px; height: 20px; transition:
 input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
 
 /* ---------------------------------------------------------------- метки, списки, пусто */
-.chip { border-radius: 999px; height: 24px; padding: 0 10px; background: rgba(255, 255, 255, .06); }
-.item { border-radius: 16px; background-color: rgba(255, 255, 255, .03); border: 1px solid rgba(255, 255, 255, .06); }
-.empty { border-radius: var(--radius); border: 1px dashed rgba(255, 255, 255, .12); background: rgba(255, 255, 255, .015); }
-.progress { height: 6px; background: rgba(255, 255, 255, .07); }
+.chip { border-radius: 999px; height: 24px; padding: 0 10px; background: rgba(var(--ov), .06); }
+.item { border-radius: 16px; background-color: rgba(var(--ov), .03); border: 1px solid rgba(var(--ov), .06); }
+.empty { border-radius: var(--radius); border: 1px dashed rgba(var(--ov), .12); background: rgba(var(--ov), .015); }
+.progress { height: 6px; background: rgba(var(--ov), .07); }
 .progress > div { background-color: var(--accent); background-image: linear-gradient(90deg, var(--accent), rgba(var(--violet), 1)); }
 
 /* ---------------------------------------------------------------- окна, меню, уведомления */
 .backdrop { background: rgba(5, 4, 12, .6); backdrop-filter: blur(10px) saturate(1.2); }
 .modal { border-radius: 26px !important; border: 1px solid transparent !important;
-  background: linear-gradient(160deg, #1a1830, #110f20) padding-box, linear-gradient(160deg, rgba(255, 255, 255, .18), rgba(var(--violet), .25) 60%, rgba(var(--accent-rgb), .2)) border-box !important;
+  background: linear-gradient(160deg, #1a1830, #110f20) padding-box, linear-gradient(160deg, rgba(var(--ov), .18), rgba(var(--violet), .25) 60%, rgba(var(--accent-rgb), .2)) border-box !important;
   box-shadow: 0 40px 90px -20px rgba(0, 0, 0, .85) !important; animation: modal-in .45s var(--spring) both !important; }
 @keyframes modal-in { from { opacity: 0; transform: translateY(16px) scale(.94); } to { opacity: 1; transform: none; } }
-.dropdown { border-radius: 18px !important; background: rgba(22, 20, 39, .92) !important; backdrop-filter: blur(18px); border: 1px solid rgba(255, 255, 255, .1) !important;
+.dropdown { border-radius: 18px !important; background: rgba(22, 20, 39, .92) !important; backdrop-filter: blur(18px); border: 1px solid rgba(var(--ov), .1) !important;
   box-shadow: 0 24px 60px -16px rgba(0, 0, 0, .8) !important; animation: modal-in .32s var(--spring) both !important; }
 .toast { position: relative; overflow: hidden; border-radius: 16px; padding: 13px 16px 15px; background: rgba(22, 20, 39, .92); backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, .1); animation: toast-in2 .5s var(--spring) both; }
+  border: 1px solid rgba(var(--ov), .1); animation: toast-in2 .5s var(--spring) both; }
 .toast::after { content: ""; position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; transform-origin: left;
   background: linear-gradient(90deg, var(--accent), rgba(var(--violet), 1)); animation: toast-time var(--ms, 3.8s) linear forwards; }
 .toast.warn::after { background: var(--warn); } .toast.error::after { background: var(--err); }
@@ -1203,16 +1204,16 @@ input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
 
 /* ---------------------------------------------------------------- верхняя полоса и нижняя пристань в новом стиле */
 .titlebar { background: rgba(7, 6, 15, .55); }
-.tabs, .tb-tools, .account-chip { background: rgba(255, 255, 255, .04); border-color: rgba(255, 255, 255, .08); }
+.tabs, .tb-tools, .account-chip { background: rgba(var(--ov), .04); border-color: rgba(var(--ov), .08); }
 .tabs { border-radius: 999px; }
 .tabs button, .tab-ink { border-radius: 999px; }
 .tab-ink { background: linear-gradient(135deg, var(--accent-2), var(--accent)); transition: transform .5s var(--spring), width .5s var(--spring), opacity .2s; }
 .tb-tools { border-radius: 999px; } .tb-tools button { border-radius: 999px; }
 .account-chip { border-radius: 999px; } .account-chip canvas { border-radius: 50%; }
-.playbar { border-radius: 26px; background: linear-gradient(100deg, rgba(var(--pb-rgb, 47, 211, 230), .2) -5%, rgba(16, 14, 29, .85) 40%); border-color: rgba(255, 255, 255, .1); }
+.playbar { border-radius: 26px; background: linear-gradient(100deg, rgba(var(--pb-rgb, 47, 211, 230), .2) -5%, rgba(16, 14, 29, .85) 40%); border-color: rgba(var(--ov), .1); }
 .playbar .btn.play { border-radius: 999px; }
 .pb-actions .btn { border-radius: 999px; }
-::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .12); }
+::-webkit-scrollbar-thumb { background: rgba(var(--ov), .12); }
 ::-webkit-scrollbar-thumb:hover { background-color: rgba(var(--accent-rgb), .5); }
 
 /* меньше движения, если так настроена Windows */
@@ -1229,15 +1230,15 @@ input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
 .sk-grid { flex: 1; min-height: 0; grid-template-columns: minmax(340px, 400px) 1fr; align-items: stretch; gap: 16px; }
 .sk-stage { overflow-y: auto; min-height: 0;
   background: radial-gradient(120% 70% at 50% 0%, rgba(var(--accent-rgb), .18), transparent 60%) padding-box,
-    linear-gradient(160deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, .012)) padding-box,
-    linear-gradient(160deg, rgba(255, 255, 255, .14), rgba(var(--violet), .2)) border-box; }
+    linear-gradient(160deg, rgba(var(--ov), .055), rgba(var(--ov), .012)) padding-box,
+    linear-gradient(160deg, rgba(var(--ov), .14), rgba(var(--violet), .2)) border-box; }
 .sk-panel { padding: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 /* большие вкладки сверху панели: значок, название и подсказка; подложка ездит под выбранной */
 .sk-tabs { position: relative; flex: none; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 6px; margin: 10px 10px 0;
-  border-radius: 18px; background: rgba(0, 0, 0, .28); border: 1px solid rgba(255, 255, 255, .06); }
+  border-radius: 18px; background: rgba(0, 0, 0, .28); border: 1px solid rgba(var(--ov), .06); }
 .sk-tabs button { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 13px; text-align: left;
   color: var(--muted); transition: color .25s; min-width: 0; }
-.sk-tabs button i { width: 34px; height: 34px; padding: 8px; flex: none; border-radius: 11px; background: rgba(255, 255, 255, .05); transition: background .3s, color .3s, transform .4s var(--spring); }
+.sk-tabs button i { width: 34px; height: 34px; padding: 8px; flex: none; border-radius: 11px; background: rgba(var(--ov), .05); transition: background .3s, color .3s, transform .4s var(--spring); }
 .sk-tabs button b { display: block; font-size: 13.5px; white-space: nowrap; }
 .sk-tabs button small { display: block; font-size: 11px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sk-tabs button:hover { color: var(--text); }
@@ -1246,20 +1247,20 @@ input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
 .sk-tabs button.on i { background: linear-gradient(135deg, var(--accent-2), var(--accent)); color: var(--on-accent); box-shadow: 0 6px 16px -6px rgba(var(--accent-rgb), .8); }
 .sk-tabs button.on small { color: var(--muted); }
 .sk-tabs-ink { position: absolute; z-index: 0; top: 6px; bottom: 6px; left: 0; width: 0; border-radius: 13px; opacity: 0; pointer-events: none;
-  background: linear-gradient(180deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, .04)); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), .35) inset;
+  background: linear-gradient(180deg, rgba(var(--ov), .1), rgba(var(--ov), .04)); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), .35) inset;
   transition: transform .5s var(--spring), width .5s var(--spring), opacity .2s; }
 @media (max-width: 1250px) { .sk-tabs button small { display: none; } .sk-tabs button i { width: 30px; height: 30px; padding: 7px; } }
 /* содержимое вкладки: своя прокрутка, при смене — плавно выезжает */
 .sk-body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px 16px; animation: sk-swap .38s var(--ease) both; }
 @keyframes sk-swap { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-.sk-tool { border-radius: 14px; background: rgba(255, 255, 255, .04); border-color: rgba(255, 255, 255, .07); transition: transform .35s var(--spring), border-color .2s, background .2s, color .2s; }
+.sk-tool { border-radius: 14px; background: rgba(var(--ov), .04); border-color: rgba(var(--ov), .07); transition: transform .35s var(--spring), border-color .2s, background .2s, color .2s; }
 .sk-tool:hover { transform: translateY(-2px); }
 .sk-tool.on { background: linear-gradient(180deg, rgba(var(--accent-rgb), .25), rgba(var(--accent-rgb), .1)); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), .6) inset; }
 .sk-swatch { border-radius: 50%; transition: transform .3s var(--spring); }
 .sk-swatch.on { box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px #fff; border-color: transparent; }
 .sk-uv-wrap { border-radius: 18px; background: rgba(0, 0, 0, .25); }
-.sk-preset, .sk-card { border-radius: 16px; background: rgba(255, 255, 255, .03); border: 1px solid rgba(255, 255, 255, .07); }
-.sk-save { border-top-color: rgba(255, 255, 255, .07); }
+.sk-preset, .sk-card { border-radius: 16px; background: rgba(var(--ov), .03); border: 1px solid rgba(var(--ov), .07); }
+.sk-save { border-top-color: rgba(var(--ov), .07); }
 @media (max-width: 1100px) { .page[data-page=skins] { overflow-y: auto; } .sk-wrap { height: auto; } .sk-panel { min-height: 520px; } }
 
 /* ---------------------------------------------------------------- VaultMC 6.1: главный экран */
@@ -1268,22 +1269,22 @@ input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
   background:
     linear-gradient(115deg, color-mix(in srgb, var(--inst-color, var(--accent)) 30%, transparent) 0%, transparent 46%) padding-box,
     radial-gradient(60% 90% at 78% 50%, rgba(var(--violet), .22), transparent 70%) padding-box,
-    linear-gradient(160deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, .012) 55%) padding-box,
-    linear-gradient(160deg, rgba(255, 255, 255, .18), rgba(255, 255, 255, .03) 40%, rgba(var(--violet), .25)) border-box; }
+    linear-gradient(160deg, rgba(var(--ov), .06), rgba(var(--ov), .012) 55%) padding-box,
+    linear-gradient(160deg, rgba(var(--ov), .18), rgba(var(--ov), .03) 40%, rgba(var(--violet), .25)) border-box; }
 /* пиксельная «мозаика» в углу — отсылка к блокам */
 .plate.hero::before { content: ""; position: absolute; right: -40px; bottom: -40px; width: 380px; height: 380px; pointer-events: none; opacity: .5;
-  background: conic-gradient(from 90deg at 1px 1px, transparent 90deg, rgba(255, 255, 255, .05) 0) 0 0 / 22px 22px;
+  background: conic-gradient(from 90deg at 1px 1px, transparent 90deg, rgba(var(--ov), .05) 0) 0 0 / 22px 22px;
   mask: radial-gradient(closest-side, #000, transparent); transform: rotate(12deg); }
 .hero-info { padding: 34px 38px; gap: 16px; }
 .kicker { letter-spacing: .14em; }
 .hero-title h1 { font-size: clamp(32px, 4vw, 52px); letter-spacing: -1.4px;
   background: linear-gradient(100deg, #fff 40%, color-mix(in srgb, var(--accent) 60%, #fff)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.hero-title canvas { width: 72px; height: 72px; border-radius: 20px; box-shadow: 0 12px 30px -8px color-mix(in srgb, var(--inst-color, #000) 70%, #000), 0 0 0 1px rgba(255, 255, 255, .12); }
-.hero-meta span { border-radius: 999px; background: rgba(0, 0, 0, .25); border-color: rgba(255, 255, 255, .08); }
+.hero-title canvas { width: 72px; height: 72px; border-radius: 20px; box-shadow: 0 12px 30px -8px color-mix(in srgb, var(--inst-color, #000) 70%, #000), 0 0 0 1px rgba(var(--ov), .12); }
+.hero-meta span { border-radius: 999px; background: rgba(0, 0, 0, .25); border-color: rgba(var(--ov), .08); }
 .big-play { max-width: 460px; }
 .big-play .btn.play { height: 70px; border-radius: 999px; font-size: 22px; justify-content: flex-start; padding: 0 30px 0 10px; gap: 16px;
   animation: play-glow 3.2s ease-in-out infinite; }
-.big-play .btn.play > i { width: 52px; height: 52px; padding: 14px; border-radius: 50%; background: rgba(0, 0, 0, .18); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .25);
+.big-play .btn.play > i { width: 52px; height: 52px; padding: 14px; border-radius: 50%; background: rgba(0, 0, 0, .18); box-shadow: inset 0 0 0 1px rgba(var(--ov), .25);
   transition: transform .45s var(--spring); }
 .big-play .btn.play:hover > i { transform: scale(1.1) rotate(-6deg); }
 .big-play .btn.play[disabled], .big-play .btn.danger.play { animation: none; justify-content: center; padding: 0 24px; }
@@ -1305,11 +1306,11 @@ body.gaming .big-play .btn.play, body.ui-idle .big-play .btn.play { animation: n
 .quick-card .qi { transition: transform .45s var(--spring); }
 /* полка сборок: цветная шапка карточки в цвет сборки */
 .shelf-card { width: 168px; border-radius: 20px; padding: 14px; overflow: hidden;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--c, var(--accent)) 28%, transparent), rgba(255, 255, 255, .02) 55%), rgba(255, 255, 255, .03);
-  border: 1px solid rgba(255, 255, 255, .08); }
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c, var(--accent)) 28%, transparent), rgba(var(--ov), .02) 55%), rgba(var(--ov), .03);
+  border: 1px solid rgba(var(--ov), .08); }
 .shelf-card.on { border-color: transparent; box-shadow: 0 0 0 2px var(--accent), 0 12px 30px -10px rgba(var(--accent-rgb), .6); }
 .shelf-card canvas { width: 46px; height: 46px; border-radius: 14px; }
-.shelf-card.add { background: rgba(255, 255, 255, .015); border: 1px dashed rgba(255, 255, 255, .14); }
+.shelf-card.add { background: rgba(var(--ov), .015); border: 1px dashed rgba(var(--ov), .14); }
 
 /* ---- главный экран: персонаж в настоящем 3D (web/js/lobby3d.js) ---- */
 .lh-host { cursor: pointer; }
@@ -1339,7 +1340,7 @@ body.gaming .big-play .btn.play, body.ui-idle .big-play .btn.play { animation: n
   cursor: pointer; opacity: 0; transition: opacity .18s, background .18s, color .18s; }
 .hero-edit svg { width: 15px; height: 15px; }
 .hero-name:hover .hero-edit { opacity: 1; }
-.hero-edit:hover { background: rgba(255, 255, 255, .1); color: var(--accent-2); }
+.hero-edit:hover { background: rgba(var(--ov), .1); color: var(--accent-2); }
 .hero-rename { width: min(100%, 380px); min-width: 0; font: inherit; font-size: clamp(26px, 3.2vw, 44px); font-weight: 800; letter-spacing: -1px; color: #fff;
   background: rgba(0, 0, 0, .35); border: 1px solid rgba(var(--accent-rgb), .7); border-radius: 14px; padding: 2px 14px; outline: none;
   box-shadow: 0 0 0 4px rgba(var(--accent-rgb), .18); }
@@ -1348,3 +1349,41 @@ body.gaming .big-play .btn.play, body.ui-idle .big-play .btn.play { animation: n
 .gm-list { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; margin: 14px 0 12px; }
 .gm-row { display: flex; padding: 9px 12px; border-radius: 12px; background: var(--line2); }
 .gm-row small { font-weight: 500; white-space: nowrap; }
+
+/* =============================================================================
+   Светлая тема (data-theme="light" ставит applyTheme в settings.js) и клавиатура.
+   Белые полупрозрачные слои во всём файле — rgba(var(--ov), …): в светлой теме --ov тёмный.
+   ============================================================================= */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --ov: 30, 24, 60;
+  --bg: #f3f2fa; --bg2: #ebe9f6; --panel: #ffffff; --panel2: #f6f5fc; --panel3: #ece9f8;
+  --line: #ddd9ee; --line2: #c9c4e2;
+  --text: #1c1a2e; --muted: #55527a; --faint: #8a87ab;
+  --glass: rgba(var(--ov), .04); --glass2: rgba(var(--ov), .07);
+}
+:root[data-theme="light"] body::before { opacity: .55; }
+:root[data-theme="light"] .btn.primary, :root[data-theme="light"] .btn.primary * { color: var(--on-accent); }
+:root[data-theme="light"] .modal, :root[data-theme="light"] .dropdown {
+  background: #ffffff !important; border-color: var(--line2) !important; box-shadow: 0 24px 60px -20px rgba(30, 24, 60, .35); }
+:root[data-theme="light"] .backdrop { background: rgba(30, 24, 60, .35); }
+:root[data-theme="light"] .input, :root[data-theme="light"] .seg, :root[data-theme="light"] .sk-tabs,
+:root[data-theme="light"] .hero-meta span { background: rgba(var(--ov), .05); }
+:root[data-theme="light"] .playbar { background: linear-gradient(100deg, rgba(var(--pb-rgb, 47, 211, 230), .18) -5%, rgba(255, 255, 255, .92) 40%); }
+:root[data-theme="light"] .hero-title, :root[data-theme="light"] .wordmark { background: none; -webkit-text-fill-color: currentColor; color: var(--text); }
+:root[data-theme="light"] .card, :root[data-theme="light"] .plate { box-shadow: 0 10px 30px -18px rgba(30, 24, 60, .25); }
+:root[data-theme="light"] ::-webkit-scrollbar-thumb { background: var(--line2); }
+
+/* клавиатура: видно, где фокус */
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; border-radius: 8px; }
+.input:focus-visible { outline-offset: 0; }
+:root[data-theme="light"] .h1, :root[data-theme="light"] .hero-title h1 {
+  background: linear-gradient(100deg, #1c1a2e 30%, color-mix(in srgb, var(--accent) 80%, #1c1a2e)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+:root[data-theme="light"] .titlebar { background: rgba(255, 255, 255, .7); }
+:root[data-theme="light"] .toast { background: rgba(255, 255, 255, .96); color: var(--text); box-shadow: 0 12px 30px -12px rgba(30, 24, 60, .35); }
+:root[data-theme="light"] .nametag { background: rgba(255, 255, 255, .8); }
+:root[data-theme="light"] .tabs button, :root[data-theme="light"] .tb-tools button { color: var(--muted); }
+:root[data-theme="light"] .tabs button.on, :root[data-theme="light"] .tabs button:hover { color: var(--text); }
+:root[data-theme="light"] { --accent-text: color-mix(in srgb, var(--accent) 65%, #1c1a2e); }
+:root[data-theme="light"] a, :root[data-theme="light"] .card-title i { color: var(--accent-text); }

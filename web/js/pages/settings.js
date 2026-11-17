@@ -15,7 +15,25 @@ function applyAccent(name) {
   const r = document.documentElement.style;
   r.setProperty('--accent', a[0]); r.setProperty('--accent-2', a[1]); r.setProperty('--accent-rgb', a[2]); r.setProperty('--on-accent', a[3]);
 }
-const getAccentHex = () => (ACCENTS[S.config.accent] || ACCENTS['Алмазный'])[0];
+/* Тема: dark | light | auto (как в Windows). Масштаб: 90–125 % (CSS zoom). */
+function applyTheme(mode) {
+  const m = ['dark', 'light', 'auto'].includes(mode) ? mode : 'dark';
+  const light = m === 'light' || (m === 'auto' && window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches);
+  document.documentElement.dataset.theme = light ? 'light' : 'dark';
+}
+function applyScale(pct) {
+  const p = Math.max(90, Math.min(125, Math.round(+pct || 100)));
+  document.documentElement.style.zoom = p === 100 ? '' : String(p / 100);
+  return p;
+}
+async function setScale(pct) {
+  const p = applyScale(pct); S.config.ui_scale = p;
+  await saveSetting({ ui_scale: p });
+  const lab = document.getElementById('scaleVal'); if (lab) lab.textContent = p + ' %';
+  const rng = document.querySelector('[data-scale]'); if (rng) rng.value = p;
+}
+try { window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => applyTheme(S.config.theme)); } catch { /* старый WebView */ }
+const getAccentHex =() => (ACCENTS[S.config.accent] || ACCENTS['Алмазный'])[0];
 
 async function saveSetting(values) {
   const cfg = await safe(api.save_settings(values));
@@ -63,6 +81,13 @@ registerPage('settings', {
       <div class="card"><div class="card-title">${ic('star')} Лаунчер</div>
         <div class="field"><span>Цвет интерфейса</span><div class="accents" id="accents">${Object.entries(ACCENTS).map(([n, a]) =>
           `<button title="${esc(n)}" style="background:${a[0]}" class="${n === c.accent ? 'on' : ''}" data-accent="${esc(n)}"></button>`).join('')}</div></div>
+        <div class="field"><span>Тема</span><div class="seg" id="themeSeg">
+          <button class="${(c.theme || 'dark') === 'dark' ? 'on' : ''}" data-theme-set="dark">Тёмная</button>
+          <button class="${c.theme === 'light' ? 'on' : ''}" data-theme-set="light">Светлая</button>
+          <button class="${c.theme === 'auto' ? 'on' : ''}" data-theme-set="auto">Как в Windows</button></div></div>
+        <div class="field"><span>Масштаб интерфейса (Ctrl + «+» / «−» / 0)</span><div class="row">
+          <input type="range" min="90" max="125" step="5" value="${c.ui_scale || 100}" data-scale aria-label="Масштаб интерфейса">
+          <b id="scaleVal">${c.ui_scale || 100} %</b></div></div>
         <div class="field"><span>Язык интерфейса · Language</span><div class="seg" id="langSeg">
           <button class="${(c.ui || {}).lang === 'en' ? '' : 'on'}" data-lang="ru">Русский</button>
           <button class="${(c.ui || {}).lang === 'en' ? 'on' : ''}" data-lang="en">English</button></div></div>
@@ -74,6 +99,7 @@ registerPage('settings', {
           <div class="row"><input class="input mono grow" data-key="data_dir" value="${esc(c.data_dir)}"><button class="btn" data-a="pickDir">Обзор</button>
           <button class="btn" data-a="openData">${ic('folder')}</button></div></label>
         <label class="field"><span>Потоков загрузки: <b id="thrVal">${c.download_threads}</b></span><input type="range" min="4" max="64" value="${c.download_threads}" data-key="download_threads"></label>
+        ${switchHtml('crash_stats', 'Анонимная статистика падений', 'Если игра вылетает, на сервер уходит только тип проблемы и версии лаунчера и игры — без ника, путей и названий модов', c.crash_stats)}
         ${switchHtml('win_notify', 'Уведомления Windows о друзьях', 'Когда лаунчер свёрнут: «Ник хочет в друзья» и «Ник открыл мир». Во время игры не показываются; свёрнутый лаунчер раз в 3 минуты спрашивает сервер', c.win_notify)}
         ${switchHtml('show_online', 'Показывать друзьям, что я в сети', 'Друзья VaultMC видят «в сети» / «играет в …» и могут зайти в вашу комнату', c.show_online)}
         ${switchHtml('auto_world_backups', 'Автокопии миров', 'После игры лаунчер копирует миры, в которых вы играли (5 последних копий на мир, миры больше 2 ГБ — только вручную)', c.auto_world_backups)}
@@ -125,6 +151,9 @@ registerPage('settings', {
       if (k === 'ram_gb') { S.config.ram_gb = +e.target.value; $('#ramVal', el).textContent = e.target.value + ' ГБ'; ramHint(); }
       if (k === 'download_threads') $('#thrVal', el).textContent = e.target.value;
     };
+    const sc = $('[data-scale]', el);
+    if (sc) sc.oninput = () => { const p = applyScale(sc.value); $('#scaleVal', el).textContent = p + ' %'; };
+    if (sc) sc.onchange = () => setScale(sc.value);
     el.onchange = (e) => {
       const k = e.target.dataset.key; if (!k) return;
       const v = e.target.type === 'checkbox' ? e.target.checked : e.target.type === 'range' || e.target.type === 'number' ? +e.target.value : e.target.value.trim();
@@ -139,6 +168,11 @@ registerPage('settings', {
         applyAccent(acc); await saveSetting({ accent: acc });
         $$('#accents button', el).forEach((b) => b.classList.toggle('on', b.dataset.accent === acc));
         renderAccount(); renderPlaybar();
+      }
+      const th = e.target.closest('[data-theme-set]')?.dataset.themeSet;
+      if (th) {
+        S.config.theme = th; applyTheme(th); await saveSetting({ theme: th });
+        $$('#themeSeg button', el).forEach((x) => x.classList.toggle('on', x.dataset.themeSet === th));
       }
       const lang = e.target.closest('[data-lang]')?.dataset.lang;
       if (lang) {

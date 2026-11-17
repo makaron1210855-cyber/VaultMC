@@ -63,6 +63,7 @@ export default {
         if (cp) return cslProfile(env, cp[1]);
         const ct = path.match(/^\/(?:csl\/)?textures\/([0-9a-f]{40})([sc])([a-z0-9_]{1,16})$/);
         if (ct) return cslTexture(env, ct[1], ct[2] === 's' ? 'skin' : 'cape', ct[3]);
+        if (path === '/api/stats') return statsRead(env, request);
         if (path === '/api/status' || path === '/') return json({ ok: true, service: 'VaultMC skins', version: 6 });
         const sh = path.match(/^\/api\/share\/([A-Z0-9]{6})$/);
         if (sh) return url.searchParams.has('brief') ? shareBrief(env, sh[1]) : getShare(env, sh[1]);
@@ -73,6 +74,7 @@ export default {
       if (request.method !== 'POST') return json({ error: 'Метод не поддерживается' }, 405);
       const body = await request.json().catch(() => null);
       if (!body || typeof body !== 'object') return json({ error: 'Пустой запрос' }, 400);
+      if (path === '/api/stat') return social(env, { op: 'stat', ip, body });   // анонимная статистика падений (только с согласия игрока)
       if (path === '/api/register') return register(env, body, () => gate(env, ip), ip);
       const route = ROUTES[path];
       if (!route) return json({ error: 'Неизвестный адрес' }, 404);
@@ -98,6 +100,13 @@ export default {
     }
   },
 };
+
+// Чтение сводки: только с секретом STATS_KEY (npx wrangler secret put STATS_KEY); без секрета сводка закрыта.
+async function statsRead(env, request) {
+  const k = String(env.STATS_KEY || '');
+  if (k.length < 12 || request.headers.get('x-stats-key') !== k) return new Response('Not found', { status: 404 });
+  return social(env, { op: 'statsList' });
+}
 
 /* ---------------------------------------------------------------- помощники */
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
@@ -401,6 +410,7 @@ const LIMITS = {
   rename: [3, 1440 * MIN],      // смена ника
   friendReq: [30, 1440 * MIN],  // новые заявки в друзья с ника (защита от спама)
   block: [60, 1440 * MIN],      // блокировки с ника
+  stat: [20, 1440 * MIN],       // отчёты статистики падений с одного адреса
 };
 const MAX_BLOCKED = 200;
 const KV_BUCKET = { upload: 'skin', remove: 'skin', share: 'share', turn: 'turn', recovery: 'recovery', rename: 'rename' };
@@ -413,6 +423,8 @@ const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS offers (host_k TEXT NOT NULL, id TEXT NOT NULL, from_name TEXT NOT NULL, from_k TEXT NOT NULL, sdp TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (host_k, id))',
   'CREATE TABLE IF NOT EXISTS answers (host_k TEXT NOT NULL, id TEXT NOT NULL, guest_k TEXT NOT NULL, data TEXT NOT NULL, exp INTEGER NOT NULL, PRIMARY KEY (host_k, id))',
   // когда игрок последний раз был в сети (для «был в сети 2 ч назад» у друзей)
+  // анонимная статистика падений: день, тип проблемы, версия лаунчера, версия игры, загрузчик → сколько раз
+  'CREATE TABLE IF NOT EXISTS crashstats (day TEXT NOT NULL, kind TEXT NOT NULL, app TEXT NOT NULL, mc TEXT NOT NULL, loader TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (day, kind, app, mc, loader))',
   'CREATE TABLE IF NOT EXISTS lastseen (k TEXT PRIMARY KEY, at INTEGER NOT NULL)',
 ];
 // kind в таблице friends: friend — друзья, in/out — заявки, block — «я заблокировал этого игрока»
@@ -439,6 +451,19 @@ export class Social {
     this.counters = new Map();   // лимиты: живут в памяти, при выгрузке объекта сбрасываются (это допустимо)
     this.cleanedAt = 0;
     for (const q of SCHEMA) this.sql.exec(q);
+  }
+
+  // Один анонимный отчёт: только тип проблемы и версии — ни ника, ни путей, ни адреса (адрес нужен лишь для лимита в памяти).
+  stat(ip, body) {
+    if (this.hit('stat:' + ip, LIMITS.stat)) return tooMany('Слишком много отчётов');
+    const b = body && typeof body === 'object' ? body : {};
+    const kind = String(b.kind || ''), app = String(b.app || ''), mc = String(b.mc || ''), loader = String(b.loader || '');
+    if (!/^[a-z0-9_-]{1,40}$/.test(kind) || !/^[0-9]{1,3}(\.[0-9]{1,3}){1,3}$/.test(app)
+      || !/^[0-9a-z.+_ -]{0,30}$/i.test(mc) || !/^[a-z]{0,12}$/.test(loader)) return json({ error: 'Неверный отчёт' }, 400);
+    const day = new Date().toISOString().slice(0, 10);
+    this.sql.exec('INSERT INTO crashstats (day, kind, app, mc, loader, n) VALUES (?, ?, ?, ?, ?, 1) ON CONFLICT(day, kind, app, mc, loader) DO UPDATE SET n = n + 1', day, kind, app, mc, loader);
+    this.sql.exec('DELETE FROM crashstats WHERE day < ?', new Date(Date.now() - 120 * 86400000).toISOString().slice(0, 10));
+    return json({ ok: true });
   }
 
   rows(query, ...args) { return this.sql.exec(query, ...args).toArray(); }
@@ -485,6 +510,8 @@ export class Social {
       if (this.hit('lookup:' + ip, LIMITS.roomLookup)) return tooMany('Слишком много попыток найти комнату. Подождите 10 минут');
       return this.getRoom(String(m.code || ''));
     }
+    if (m.op === 'stat') return this.stat(ip, m.body);
+    if (m.op === 'statsList') return json({ rows: this.rows('SELECT day, kind, app, mc, loader, n FROM crashstats ORDER BY day DESC, n DESC LIMIT 500') });
     if (m.op === 'renameSocial') return this.renameSocial(String(m.from || ''), String(m.to || ''));
     if (!['call', 'recovery'].includes(m.op)) return json({ error: 'Неизвестный запрос' }, 400);
 

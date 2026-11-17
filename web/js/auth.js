@@ -53,6 +53,7 @@ function bindAuthForm(root, onDone) {
     if (st.kind === 'microsoft') renderMs();
     err('');
   };
+  // i18n-skip-start: вход Microsoft выключен флагом MS_LOGIN_ENABLED, его тексты не показываются
   const renderMs = () => {
     const box = $('#msBox', root);
     if (!S.config.ms_client_id) {
@@ -85,6 +86,7 @@ function bindAuthForm(root, onDone) {
       $('#msCancel', box).onclick = () => { api.ms_cancel(); renderMs(); };
     };
   };
+  // i18n-skip-end
   root.__msDone = (res) => { if (res.error) { err(res.error); renderMs(); } else onDone(res); };
   bindSegs(root, (name, v) => { st[name] = v; update(); });
   $('#offPw', root).addEventListener('input', async (e) => {

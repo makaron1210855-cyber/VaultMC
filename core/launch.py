@@ -30,7 +30,7 @@ from .java_runtime import ensure_runtime
 from .net import Cancelled
 from .rules import rules_allow
 from .friends import find_tunnel_address
-from .utils import (APP_NAME, APP_VERSION, find_java_installs, format_command, high_priority_flags, is_windows, set_process_priority,
+from .utils import (APP_NAME, APP_VERSION, available_ram_mb, find_java_installs, java_is_32bit, low_memory_warning, format_command, high_priority_flags, is_windows, set_process_priority,
                     java_major_version, maven_to_path, mojang_os_name, no_window_flags, offline_uuid,
                     pick_java, set_gpu_preference, timing_log)
 from .versions import VersionRepository, parse_fabric_id
@@ -41,7 +41,16 @@ G1_FLAGS = [
     "-XX:+UseG1GC", "-XX:+ParallelRefProcEnabled", "-XX:MaxGCPauseMillis=50", "-XX:+PerfDisableSharedMem",
     "-XX:+UnlockExperimentalVMOptions", "-XX:+DisableExplicitGC", "-XX:G1NewSizePercent=30",
     "-XX:G1MaxNewSizePercent=40", "-XX:G1HeapRegionSize=8M", "-XX:G1ReservePercent=20",
+    # как в официальном лаунчере Mojang: повторяющиеся строки хранятся один раз; стартовая куча занимается сразу
+    "-XX:+UseStringDeduplication", "-XX:+AlwaysPreTouch",
 ]
+
+
+def compact_headers_flags(java_major: int) -> list[str]:
+    """Java 24+: короткие заголовки объектов (JEP 450/519) — меньше памяти и чуть быстрее; в Java 24 флаг экспериментальный."""
+    if java_major < 24:
+        return []
+    return (["-XX:+UnlockExperimentalVMOptions"] if java_major == 24 else []) + ["-XX:+UseCompactObjectHeaders"]
 
 
 def pick_gc_flags(java_major: int, ram_gb: int, cores: int) -> list[str]:
@@ -58,7 +67,8 @@ def pick_gc_flags(java_major: int, ram_gb: int, cores: int) -> list[str]:
         # -ZUncommit: куча не возвращается системе и не выделяется заново (меньше микрофризов после сборки мусора);
         # AlwaysPreTouch: память под стартовую кучу занимается сразу, а не страницами во время игры.
         # Оба флага стоят в запуске PineconeMC (форк Prism) на этом же ПК — проверено по его журналу 16.11.2026
-        return flags + ["-XX:-ZUncommit", "-XX:+AlwaysPreTouch", "-XX:+DisableExplicitGC", "-XX:+PerfDisableSharedMem"]
+        return flags + ["-XX:-ZUncommit", "-XX:+AlwaysPreTouch", "-XX:+DisableExplicitGC", "-XX:+PerfDisableSharedMem",
+                        "-XX:+UseStringDeduplication"]
     return list(G1_FLAGS)
 
 
@@ -330,17 +340,33 @@ class GameRunner:
         own = f"{self.config.extra_jvm_args} {target.extra_jvm}"
         if re.search(r"-XX:\+Use\w+GC", own):
             return
-        flags = pick_gc_flags(getattr(self, "_java_major", 0) or plan.java_major, target.ram_gb, os.cpu_count() or 0)
-        if flags == G1_FLAGS:
-            return
+        java_major = getattr(self, "_java_major", 0) or plan.java_major
+        flags = pick_gc_flags(java_major, target.ram_gb, os.cpu_count() or 0)
         cmd = plan.command
         try:
             start = cmd.index(G1_FLAGS[0])
         except ValueError:
             return
-        if cmd[start:start + len(G1_FLAGS)] == G1_FLAGS:
-            cmd[start:start + len(G1_FLAGS)] = flags
-            self._log(f"[Память] Сборщик мусора ZGC: паузы почти незаметны ({target.ram_gb} ГБ, Java {self._java_major})")
+        if cmd[start:start + len(G1_FLAGS)] != G1_FLAGS:
+            return
+        extra = [f for f in compact_headers_flags(java_major) if f not in cmd and f not in flags]
+        if flags != G1_FLAGS:
+            self._log(f"[Память] Сборщик мусора ZGC: паузы почти незаметны ({target.ram_gb} ГБ, Java {java_major})")
+        cmd[start:start + len(G1_FLAGS)] = flags + extra
+        if extra:
+            self._log(f"[Память] Java {java_major}: короткие заголовки объектов (меньше памяти)")
+
+    def _check_resources(self, java: str, target) -> None:
+        """Предупреждения до запуска (запуск они не меняют): мало свободной памяти, 32-битная Java с большой кучей."""
+        text = low_memory_warning(target.ram_gb, available_ram_mb())
+        if text:
+            self._log(f"[Память] Внимание: {text}")
+            self.post("launch_warning", {"kind": "low_ram", "text": text})
+        if java_is_32bit(java) and target.ram_gb > 2:
+            text = (f"Установлена 32-битная Java, а игре отдано {target.ram_gb} ГБ — 32-битная Java больше 2 ГБ не поддерживает, "
+                    f"игра может не запуститься. Включите «Автоматически подбирать Java» в настройках лаунчера")
+            self._log(f"[Java] Внимание: {text}")
+            self.post("launch_warning", {"kind": "java32", "text": text})
 
     def _java_for_install(self, major: int) -> str:
         path = self._choose_java(major)
@@ -363,9 +389,11 @@ class GameRunner:
     def install(self, version_id: str) -> bool:
         return self._start(self._run_install, version_id)
 
-    def run_task(self, title: str, func: Callable[[], object], done_event: str = "task_done") -> bool:
-        """Любая долгая операция (пакет оптимизации, сборка Modrinth) с блокировкой кнопки «Играть»."""
-        return self._start(self._run_task, title, func, done_event)
+    def run_task(self, title: str, func: Callable[[], object], done_event: str = "task_done",
+                 new_instance: bool = False) -> bool:
+        """Любая долгая операция (пакет оптимизации, сборка Modrinth) с блокировкой кнопки «Играть».
+        new_instance=True — задача создаёт НОВУЮ сборку (импорт, установка из каталога): панель её не привязывает к выбранной."""
+        return self._start(self._run_task, title, func, done_event, new_instance)
 
     def cancel(self) -> None:
         self.cancel_event.set()
@@ -382,8 +410,9 @@ class GameRunner:
         self.cancel_event.clear()
         self._state("idle")
 
-    def _run_task(self, title: str, func, done_event: str) -> None:
+    def _run_task(self, title: str, func, done_event: str, new_instance: bool = False) -> None:
         try:
+            self.post("task_new", bool(new_instance))   # до смены статуса: панель сразу знает, чья это задача
             self._state("installing")
             self._progress(0.3, title)
             result = func()
@@ -394,6 +423,7 @@ class GameRunner:
             self.post("error", str(exc))
             self._progress(0.0, "Ошибка")
         finally:
+            self.post("task_new", False)
             self._finish()
 
     def _run_install(self, version_id: str) -> None:
@@ -448,6 +478,7 @@ class GameRunner:
             java = self._choose_java(plan.java_major, plan.java_component)
             t_java = time.monotonic()
             plan.command[0] = java
+            self._check_resources(java, target)
             self._apply_gc(plan, target)
             self._apply_cds(plan, target)
             self._apply_gc_log(plan, target)
@@ -583,6 +614,11 @@ class GameRunner:
         self._log(f"[Java] {path} (версия {major or '?'})")
         if major and major < required:
             raise LaunchError(f"Этой версии нужна Java {required}+, а выбрана Java {major}")
+        if major and required <= 8 < major:
+            text = (f"Этой версии нужна Java {required}, а выбрана Java {major} — моды и Forge старых версий на новой Java "
+                    f"часто не запускаются. Включите «Автоматически подбирать Java» в настройках лаунчера")
+            self._log(f"[Java] Внимание: {text}")
+            self.post("launch_warning", {"kind": "java_version", "text": text})
         return path
 
     def _watch_tunnel(self, game_dir, current_address) -> None:

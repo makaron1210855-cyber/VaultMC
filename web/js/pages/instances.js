@@ -447,7 +447,7 @@ function openNewInstance() {
     const yearBased = !row.dataset.g.startsWith('1.');      // 26.1, 26.3 … — новая нумерация Mojang
     const lateForge = st.loader === 'forge' && (yearBased || mi > 20 || (mi === 20 && pa >= 2));
     $('#niHint', m).innerHTML = lateForge
-      ? `<span style="color:var(--warn)">${ic('alert')} Для ${esc(row.dataset.g)} почти все моды выходят на NeoForge, а не на Forge — лучше выберите NeoForge.</span>` : $('#niHint', m).innerHTML;
+      ? `<span style="color:var(--warn)">${ic("alert")} ${esc(row.dataset.g)}: почти все моды выходят на NeoForge, а не на Forge — лучше выберите NeoForge.</span>` : $('#niHint', m).innerHTML;
     hydrateIcons($('#niHint', m));
     loadBuilds();
   };

@@ -280,7 +280,7 @@ def _main_class(jar: Path) -> str:
         for line in zf.read("META-INF/MANIFEST.MF").decode("utf-8", "replace").splitlines():
             if line.startswith("Main-Class:"):
                 return line.split(":", 1)[1].strip()
-    raise ForgeError(f"В {jar.name} не указан Main-Class")
+    raise ForgeError(f"Main-Class не указан в {jar.name}")
 
 
 def _sha1(path: Path) -> str:
