@@ -312,6 +312,17 @@ class GameRunner:
         archive = cds_dir / f"{target.version_id}.jsa"
         plan.command[1:1] = ["-XX:+AutoCreateSharedArchive", f"-XX:SharedArchiveFile={archive}"]
 
+    GC_LOG = "logs/vaultmc-gc.log"   # относительный путь: игра запускается из папки сборки (cwd), двоеточия диска не мешают
+
+    def _apply_gc_log(self, plan, target) -> None:
+        """Java 9+: короткий журнал сборщика мусора (core/lagcheck.py по нему находит долгие паузы).
+        Проверено на Java 17, 21 и 25 с относительным и абсолютным путём. На Java 8 флага -Xlog нет — игра бы не запустилась."""
+        java_major = getattr(self, "_java_major", 0) or plan.java_major
+        if java_major < 9 or target.compat or any(a.startswith("-Xlog:gc") for a in plan.command):
+            return
+        (target.game_dir / "logs").mkdir(parents=True, exist_ok=True)
+        plan.command[1:1] = [f"-Xlog:gc:file={self.GC_LOG}:time,uptime:filecount=2,filesize=2m"]
+
     def _apply_gc(self, plan, target) -> None:
         """Флаги G1 уже в команде; если Java и ПК позволяют — меняем их на ZGC. Свои флаги GC пользователя не трогаем."""
         if not self.config.optimize_jvm or target.compat:
@@ -439,6 +450,7 @@ class GameRunner:
             plan.command[0] = java
             self._apply_gc(plan, target)
             self._apply_cds(plan, target)
+            self._apply_gc_log(plan, target)
             if self.config.discrete_gpu and set_gpu_preference(java):
                 self._log("[Видеокарта] Для Java выбрана высокопроизводительная видеокарта")
             self._progress(0.95, "Распаковка нативных библиотек...")

@@ -171,6 +171,7 @@ async function renderTab(el, inst) {
     const forgeLike = inst.loader === 'forge' || inst.loader === 'neoforge';
     const pack = forgeLike ? S.boot.optimizationForge : S.boot.optimization;
     body.innerHTML = `
+      ${diagCardHtml()}
       <div class="card at-card" id="atCard"><div class="row"><div class="grow"><div class="card-title">${ic('cpu')} Автонастройка под ваш ПК</div>
         <p class="card-sub" style="margin:0">Лаунчер посмотрит память, процессор и видеокарту и подберёт память для игры, графику и моды оптимизации. FPS внутри игры он не замеряет — подбор по характеристикам компьютера.</p></div>
         <button class="btn primary" data-a="atscan">${ic('search')} Определить ПК</button></div>
@@ -196,6 +197,7 @@ async function renderTab(el, inst) {
         </div>
       </div>`;
     hydrateIcons(body);
+    if (!body.__diag) { body.__diag = true; bindDiag(body, inst); }   // кнопки «Диагностики» (web/js/pages/diag.js)
     // отмечаем уже установленные моды (в том числе пришедшие с импортированной сборкой)
     if (inst.loader !== 'vanilla') {
       const packBtn = $('[data-a=pack]', body);

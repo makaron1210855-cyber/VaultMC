@@ -85,6 +85,11 @@ registerPage('settings', {
           <button class="btn" data-a="checkUpdate">${ic('download')} Проверить обновления</button></div>
         <div id="launcherHealth"></div></div>
 
+      <div class="card"><div class="card-title">${ic('search')} Диагностика</div>
+        <p class="card-sub">Что-то не работает? Проверьте сеть или соберите отчёт — личное в нём вырезается, отправляете его вы сами.</p>
+        <div class="row wrap"><button class="btn" data-a="netcheck">${ic('globe')} Проверить сеть</button>
+          <button class="btn" data-a="sreport">${ic('archive')} Отчёт для поддержки</button></div></div>
+
       ${S.account?.kind === 'offline' ? `<div class="card"><div class="card-title">${ic('key')} Пароль аккаунта ${esc(S.account.username)}</div>
         <div class="row"><input class="input" type="password" id="pw0" placeholder="Текущий пароль"><input class="input" type="password" id="pw1" placeholder="Новый пароль">
         <input class="input" type="password" id="pw2" placeholder="Повторите"><button class="btn primary" data-a="pw">Сменить</button></div>
@@ -168,6 +173,8 @@ registerPage('settings', {
       if (a === 'tutorial') showTutorial();
       if (a === 'checkUpdate') checkUpdates(true);
       if (a === 'shortcut') { const r = await safe(api.create_shortcut()); if (r && okOrToast(r)) toast('Ярлык создан: ' + r.path); }
+      if (a === 'netcheck') openNetCheck();
+      if (a === 'sreport') openSupportReport();
       if (a === 'rollback') {
         if (!await confirmDialog('Вернуть прошлую версию?', `Лаунчер закроется и откроется версия ${el.__prevVersion}. Сборки, миры и аккаунты не изменятся. Эту версию лаунчер больше не будет предлагать — следующее обновление придёт как обычно.`, 'Вернуть')) return;
         okOrToast(await safe(api.launcher_rollback()));

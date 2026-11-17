@@ -534,9 +534,25 @@ class Api:
         self._room_address = ""
         if inst and self._cfg.auto_world_backups:
             self._auto_world_backups(inst)
+        if inst and info.get("seconds", 0) >= 300:
+            self._lag_hint(inst)
         if info.get("code") not in (0, None) and not info.get("killed"):
             info["instance"] = inst.id if inst else ""
             info["analysis"] = self._analyze_crash(info, inst)
+
+    def _lag_hint(self, inst) -> None:
+        """Игра шла 5+ минут — смотрим журналы; если много подвисаний, подсказываем кнопку «Почему тормозит»."""
+        def job():
+            try:
+                res = self.lag_check(inst.id)
+            except Exception as exc:  # noqa: BLE001  подсказка — не повод что-то ломать
+                _log(f"lag hint: {exc}")
+                return
+            bad = res["behind"] >= 5 or res["gc"]["over500"] >= 2 or res["gc"]["full"] >= 3
+            if bad:
+                self._emit("lag_hint", {"instance": inst.id, "text": "В журнале есть подвисания: игра не успевала или долго убирала память. "
+                                                                     "Лаунчер может показать причину и что поправить."})
+        threading.Thread(target=job, daemon=True).start()
 
     def _auto_world_backups(self, inst) -> None:
         """После выхода из игры — в фоне копируем миры, в которых играли (по 5 автокопий на мир)."""
@@ -584,6 +600,14 @@ class Api:
             self._cfg.java_auto = True
             self._save()
             return {"ok": "Автоподбор Java включён — нажмите «Играть»"}
+        if action == "clear_jvm":
+            had = bool((self._cfg.extra_jvm_args or "").strip() or (inst and (inst.jvm_args or "").strip()))
+            self._cfg.extra_jvm_args = ""
+            if inst:
+                inst.jvm_args = ""
+                self._instances.save(inst)
+            self._save()
+            return {"ok": "Свои флаги JVM убраны — нажмите «Играть»" if had else "Своих флагов JVM не было — проблема в другом"}
         if action in ("ram", "ram_down") and inst:
             inst.ram_gb = max(RAM_MIN, min(RAM_MAX, int(arg)))
             self._instances.save(inst)
@@ -2201,6 +2225,108 @@ class Api:
             return any(isinstance(e, dict) and e.get("slug") == slug and index.has("modrinth", k.split(":", 1)[1])
                        for k, e in index.data.items() if k.startswith("modrinth:"))
         return {"installed": [role for role, cands in roles.items() if any(has(s) for s in cands)]}
+
+    # ================================================================= диагностика (этап 6 плана 1.0)
+    def _instance_java_major(self, inst) -> int:
+        try:
+            return int(self._repo.load_version_json(inst.version_id).get("javaVersion", {}).get("majorVersion", 8))
+        except Exception:  # noqa: BLE001  версия ещё не скачана
+            return 0
+
+    def _instance_ram(self, inst) -> int:
+        return inst.ram_gb or self._auto_ram(inst)
+
+    def jvm_explain(self, instance_id: str) -> dict:
+        """«Какие флаги Java использует лаунчер и почему» — по тем же правилам, что и при запуске."""
+        from core.jvmreport import explain
+        inst = self._inst(instance_id)
+        own = f"{self._cfg.extra_jvm_args} {inst.jvm_args}"
+        return explain(self._instance_java_major(inst), self._instance_ram(inst), os.cpu_count() or 0, total_ram_gb() or 0,
+                       self._cfg.optimize_jvm, inst.compat, own)
+
+    def lag_check(self, instance_id: str) -> dict:
+        """«Почему тормозит»: разбор журналов последнего сеанса игры (FPS лаунчер не измеряет)."""
+        from core import lagcheck
+        inst = self._inst(instance_id)
+        game_log = lagcheck.read_game_log(inst.game_dir)
+        gc_log = lagcheck._read_tail(inst.game_dir / "logs" / "vaultmc-gc.log")
+        mods = sum(1 for p in inst.mods_dir.iterdir() if p.suffix == ".jar") if inst.mods_dir.is_dir() else 0
+        res = lagcheck.analyze(game_log, gc_log, self._instance_ram(inst), self._instance_java_major(inst), mods)
+        return {**res, "ram": self._instance_ram(inst), "running": self._instance_running(instance_id)}
+
+    def net_check_start(self) -> dict:
+        """Проверка сети в фоне (до ~15 с); итог — событие netcheck_done. Кнопка «Играть» не блокируется."""
+        if getattr(self, "_net_busy", False):
+            return {"started": True}
+        self._net_busy = True
+
+        def job():
+            from core import netcheck
+            try:
+                res = netcheck.run()
+                self._last_net = res
+                self._emit("netcheck_done", res)
+            except Exception as exc:  # noqa: BLE001
+                self._emit("netcheck_done", {"error": f"Проверка не удалась: {exc}"})
+            finally:
+                self._net_busy = False
+        threading.Thread(target=job, daemon=True).start()
+        return {"started": True}
+
+    def _report_info(self, inst) -> dict:
+        import platform
+        from core.autotune import detect_pc
+        from core.jvmreport import explain
+        from core.supportreport import SAFE_CONFIG
+        pc = detect_pc()
+        java = self._instance_java_major(inst)
+        ram = self._instance_ram(inst)
+        jvm = explain(java, ram, os.cpu_count() or 0, total_ram_gb() or 0, self._cfg.optimize_jvm, inst.compat,
+                      f"{self._cfg.extra_jvm_args} {inst.jvm_args}")
+        mods = [f"{'  ' if m.enabled else '(выкл) '}{m.path.name}" for m in ModManager(inst.game_dir).list_mods()]
+        cfg = asdict(self._cfg)
+        safe_cfg = [f"{k} = {cfg.get(k)}" for k in SAFE_CONFIG if k in cfg]
+        acc = self._accounts.active
+        return {"launcher": APP_VERSION, "sections": [
+            ("Лаунчер", [f"VaultMC {APP_VERSION}", f"Система: {platform.platform()}", f"Python {platform.python_version()}"]),
+            ("Компьютер", [f"Память: {pc.get('ram_gb')} ГБ", f"Процессор: {pc.get('cpu')} ({pc.get('cores')} потоков)"] +
+             [f"Видеокарта: {g['name']} ({g.get('vram_gb') or '?'} ГБ)" for g in pc.get("gpus", [])]),
+            ("Сборка", [f"{inst.name}: Minecraft {inst.game_version}, {inst.loader}", f"Нужна Java {java or '?'}; игре выделено {ram} ГБ",
+                        f"Режим совместимости: {'да' if inst.compat else 'нет'}", f"Аккаунт: {acc.kind if acc else 'нет'}"]),
+            ("Флаги Java (как лаунчер запустит игру)", jvm["lines"] + [""] + jvm["flags"]),
+            (f"Моды ({len(mods)})", mods or ["нет"]),
+            ("Настройки лаунчера", safe_cfg),
+        ]}
+
+    def _build_report(self, inst, hide_nick: bool = True) -> tuple[dict, dict]:
+        from core import supportreport as sr
+        acc = self._accounts.active
+        names = sr.windows_names() + ((acc.username,) if hide_nick and acc else ())
+        net = getattr(self, "_last_net", None)
+        return sr.collect(inst.game_dir, LAUNCHER_HOME, self._report_info(inst), list(self._logs), names,
+                          (net or {}).get("text", ""))
+
+    def support_report_preview(self, instance_id: str, hide_nick: bool = True) -> dict:
+        """Что попадёт в отчёт для поддержки (уже без личного) — игрок смотрит до сохранения."""
+        files, stats = self._build_report(self._inst(instance_id), hide_nick)
+        return {"files": [{"name": n, "size": len(t.encode("utf-8"))} for n, t in files.items()], "removed": stats,
+                "net": bool(getattr(self, "_last_net", None))}
+
+    def support_report_save(self, instance_id: str, hide_nick: bool = True) -> dict:
+        from core import supportreport as sr
+        inst = self._inst(instance_id)
+        files, stats = self._build_report(inst, hide_nick)
+        target = self._dialog("save", save_filename=f"VaultMC-report-{time.strftime('%Y-%m-%d')}.zip", file_types=("Архив отчёта (*.zip)",))
+        if not target:
+            return {}
+        dest = Path(target)
+        if dest.suffix.lower() != ".zip":
+            dest = dest.with_suffix(".zip")
+        try:
+            dest.write_bytes(sr.build_zip(files))
+        except OSError as exc:
+            return {"error": f"Не удалось сохранить файл: {exc}"}
+        return {"ok": True, "path": str(dest), "files": len(files)}
 
     def autotune_scan(self, instance_id: str) -> dict:
         """Смотрим железо и предлагаем настройки для сборки (ничего не меняем)."""

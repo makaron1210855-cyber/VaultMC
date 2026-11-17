@@ -74,7 +74,20 @@ def analyze(log_text: str, report_text: str = "", mods_dir: Path | None = None, 
             "играть можно так же, только без скина с Ely.by.", None)
 
     # --- память
-    if re.search(r"OutOfMemoryError|GC overhead limit exceeded", text):
+    # «unable to create native thread» — наоборот: Java заняла слишком много памяти, системе (потокам) не осталось
+    native_thread = re.search(r"unable to create (?:new )?native thread", text)
+    if native_thread:
+        add("native-thread", "Системе не хватило памяти под потоки",
+            f"Java не смогла создать поток: игре выделено {ram_gb} ГБ, и Windows не осталось памяти под остальное. "
+            "Меньше — часто лучше: уменьшите память и закройте лишние программы.",
+            {"action": "ram_down", "arg": max(2, ram_gb - 2), "label": f"Уменьшить до {max(2, ram_gb - 2)} ГБ"})
+    if re.search(r"OutOfMemoryError: Metaspace", text):
+        add("metaspace", "Не хватило места для классов мода",
+            "Java закончила память, в которой хранятся классы игры и модов (Metaspace). Бывает на очень больших сборках. "
+            "Закройте лишние программы и уберите моды, которые не нужны; если не помогает — добавьте в «Настройки → Дополнительные "
+            "аргументы JVM» флаг -XX:MaxMetaspaceSize=1G.", None)
+    if re.search(r"OutOfMemoryError|GC overhead limit exceeded", text) and not native_thread \
+            and not re.search(r"OutOfMemoryError: Metaspace", text):
         add("oom", "Игре не хватило памяти",
             f"Сейчас сборке выделено {ram_gb} ГБ. С большим количеством модов или шейдеров нужно больше.",
             {"action": "ram", "arg": ram_gb + 2, "label": f"Выделить {ram_gb + 2} ГБ"})
@@ -83,7 +96,84 @@ def analyze(log_text: str, report_text: str = "", mods_dir: Path | None = None, 
             "Java не смогла занять столько памяти: либо её мало свободно, либо стоит 32-битная Java.",
             {"action": "ram_down", "arg": max(2, ram_gb - 2), "label": f"Уменьшить до {max(2, ram_gb - 2)} ГБ"})
 
-    # --- нет нужного мода (Fabric): «Mod 'X' (x) 1.0 requires any version of 'Fabric API' (fabric-api), which is missing!»
+    # --- Java не запустилась: неверный флаг в «Дополнительных аргументах JVM»
+    bad_opt = re.search(r"Unrecognized (?:VM )?option:? '?([\w:+=.\-/]+)'?|Improperly specified VM option '([^']+)'|"
+                        r"Invalid (?:maximum|initial) heap size|Could not create the Java Virtual Machine", text)
+    if bad_opt and not re.search(r"Could not reserve enough space", text):
+        flag = (bad_opt.group(1) or bad_opt.group(2) or "").strip()
+        add("jvm-args", "Java не приняла флаги запуска",
+            (f"Java не знает флаг «{flag}». " if flag else "") + "Он записан в «Настройки → Дополнительные аргументы JVM» "
+            "или в настройках сборки — или сделан для другой версии Java. Игра не успела даже начаться.",
+            {"action": "clear_jvm", "arg": "", "label": "Убрать свои флаги JVM"})
+
+    # --- диск
+    if re.search(r"No space left on device|There is not enough space on the disk|На диске недостаточно места|"
+                 r"not enough space on the disk", text, re.I):
+        add("disk", "На диске закончилось место",
+            "Игра не смогла записать файлы: на диске, где лежит сборка, нет свободного места. Освободите несколько ГБ "
+            "(можно удалить старые резервные копии миров и корзину во вкладке «Миры») и запустите снова.", None)
+
+    # --- родные библиотеки LWJGL / Java повреждены или заблокированы антивирусом
+    if re.search(r"UnsatisfiedLinkError|Failed to locate library: lwjgl|Failed to load library .*lwjgl|"
+                 r"lwjgl.*(?:\.dll|\.so)[^\n]*(?:not found|cannot|Access is denied)", text, re.I):
+        add("natives", "Не загрузились системные библиотеки игры",
+            "Файлы LWJGL (графика и звук) повреждены или их удалил антивирус. Добавьте папку VaultMC в исключения антивируса "
+            "и переустановите версию игры: «Сборки» → сборка → «Настройки» → «Проверить и докачать файлы» "
+            "(или создайте сборку этой версии заново).", None)
+
+    # --- поврежденный мир
+    zip_error = re.search(r"Not in GZIP format|Unexpected end of ZLIB input stream", text)
+    if re.search(r"Exception reading [^\n]*\.mca", text) or (zip_error and re.search(r"level\.dat|/region/|\\region\\|\.mca", text)):
+        add("world", "Повреждён мир",
+            "Игра не смогла прочитать файлы мира — часто после выключения света или вылета во время сохранения. "
+            "Во вкладке «Миры» есть автокопии: восстановите мир из копии (текущий не затрётся, копия разворачивается рядом).",
+            {"action": "open_worlds", "arg": "", "label": "Открыть «Миры»"})
+
+    # --- нужная версия Fabric Loader / Fabric API / Java (мод требует новее)
+    for mod, need, dep, depid, have in re.findall(
+            r"Mod '([^']+)' \([^)]*\) \S+ requires (?:version )?([^\n]*?) of '?([^'(\n]+?)'? \((fabricloader|fabric-api|java)\), "
+            r"but only the wrong version is present: ([\w.\-+]+)", text):
+        if depid == "java":
+            add(f"dep-ver:{mod}", f"«{mod}» требует другую Java",
+                f"Нужна Java {need}, а запущена {have}. Лаунчер может подобрать нужную сам.",
+                {"action": "java_auto", "arg": "", "label": "Подбирать Java автоматически"})
+        elif depid == "fabric-api":
+            add(f"dep-ver:{mod}", f"Fabric API слишком старый для «{mod}»",
+                f"Мод требует Fabric API {need}, а установлена {have}. Обновите Fabric API в списке модов («Обновления»).",
+                {"action": "find_mod", "arg": "fabric-api", "label": "Найти Fabric API"})
+        else:
+            add(f"dep-ver:{mod}", f"Fabric Loader слишком старый для «{mod}»",
+                f"Мод требует Fabric Loader {need}, а в сборке {have}. Создайте сборку с более новой версией Fabric Loader "
+                "(при создании сборки выберите последнюю) — либо поставьте версию мода постарше.", None)
+    # --- нужна версия Forge новее
+    for by, rng, have in re.findall(r"Mod ID: 'forge', Requested by: '([\w\-]+)', Expected range: '([^']+)', Actual version: '([^']+)'", text):
+        add(f"forge-ver:{by}", f"Forge слишком старый для «{by}»",
+            f"Мод требует Forge {rng}, а в сборке {have}. Создайте сборку с более новой версией Forge или возьмите версию мода постарше.", None)
+    # --- Forge не смог создать мод
+    for mod in re.findall(r"Failed to create mod instance\. ModID: ([\w\-]+)", text):
+        file = find_mod_file(mods_dir, mod) if mods_dir else ""
+        add(f"forge-inst:{mod}", f"Мод «{mod}» не смог запуститься",
+            "Forge не смог создать мод при загрузке: обычно он для другой версии игры или ему не хватает другого мода.",
+            {"action": "disable_mod", "arg": file, "label": f"Выключить {file}"} if file else None)
+
+    # --- нужная библиотека/мод повреждены (недокачанный .jar)
+    if re.search(r"ZipException: (?:zip END header not found|Invalid CEN header|error in opening zip file)|"
+                 r"Invalid or corrupt jarfile|Unable to access jarfile", text):
+        # какой из упомянутых в журнале .jar лежит в папке модов — на него и подозрение
+        file = next((n.strip() for n in re.findall(r"([\w.\-+ ]+\.jar)", text)
+                     if mods_dir and mods_dir.is_dir() and (mods_dir / n.strip()).is_file()), "")
+        add("corrupt-jar", "Повреждён файл мода или библиотеки",
+            "Один из .jar-файлов скачался не до конца или испорчен." + (f" Похоже, это «{file}»." if file else "") +
+            " Выключите его и скачайте мод заново из каталога.",
+            {"action": "disable_mod", "arg": file, "label": f"Выключить {file}"} if file else None)
+
+    # --- порт занят (LAN-мир, e4mc)
+    if re.search(r"java\.net\.BindException|Address already in use|Failed to bind to port", text):
+        add("port", "Порт уже занят",
+            "Игра не смогла открыть порт для мира: его держит другая копия Minecraft или программа. Закройте лишние окна игры "
+            "(можно перезапустить лаунчер) и откройте мир снова.", None)
+
+    # --- нужный мод: Fabric — «Mod 'X' (x) 1.0 requires any version of 'Fabric API' (fabric-api), which is missing!»
     for mod, name, pid in re.findall(r"Mod '([^']+)' \([^)]*\) \S+ requires [^\n]*? of (?:mod )?'?([^'\n,(]+?)'?"
                                      r"(?: \(([\w\-.]+)\))?, which is missing", text):
         dep = pid or name.strip()
@@ -195,6 +285,18 @@ def analyze(log_text: str, report_text: str = "", mods_dir: Path | None = None, 
             f"Вылет произошёл в драйвере {dll or 'видеокарты'}. Обновите драйвер с сайта "
             f"{ {'AMD': 'amd.com', 'NVIDIA': 'nvidia.com', 'Intel': 'intel.com'}.get(dll, 'производителя видеокарты') } "
             "и перезагрузите компьютер.", None)
+
+    # --- код завершения Windows: игра упала внутри системной библиотеки (драйвер, оверлей, антивирус)
+    code = exit_code & 0xFFFFFFFF if isinstance(exit_code, int) else 0
+    EXIT_CODES = {0xC0000005: ("0xC0000005", "обращение к чужой памяти"), 0xC0000409: ("0xC0000409", "повреждение стека"),
+                  0xC0000374: ("0xC0000374", "повреждение кучи"), 0xC000001D: ("0xC000001D", "недопустимая инструкция")}
+    if code in EXIT_CODES and not {"gpu", "natives"} & seen:
+        hexcode, what = EXIT_CODES[code]
+        add("exit-code", f"Игра упала с кодом {hexcode}",
+            f"Windows сообщает: {what} внутри системной библиотеки. Чаще всего виноваты программы, которые вмешиваются в игру: "
+            "оверлеи (Discord, Steam, MSI Afterburner, RTSS, NVIDIA), антивирус или старый драйвер видеокарты. "
+            "Выключите оверлеи, обновите драйвер и добавьте VaultMC в исключения антивируса.",
+            {"action": "compat_on", "arg": "", "label": "Включить режим совместимости"})
 
     # --- общее описание, если ничего не узнали
     if not found:

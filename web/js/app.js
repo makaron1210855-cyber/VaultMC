@@ -204,6 +204,13 @@ onEvent('packs_updated', (r) => {
   if (S.page === 'instance') refreshPage();
 });
 onEvent('open_pack', () => openPackFile());
+// после долгой игры с подвисаниями — подсказка (core/lagcheck.py разобрал журналы)
+onEvent('lag_hint', (r) => {
+  const inst = S.instances.find((i) => i.id === r.instance);
+  if (!inst) return;
+  notice('lag:' + inst.id, { title: 'Игра подвисала', text: esc(r.text),
+    actions: [{ label: 'Почему тормозит', primary: true, icon: 'zap', run: () => openLagCheck(inst) }] });
+});
 // файлы лаунчера повреждены (core/integrity.py) — один раз за запуск предлагаем починить
 setTimeout(async () => {
   const h = await api.launcher_health().catch(() => null);
@@ -333,7 +340,8 @@ function showCrash(info) {
         ${f.fix ? `<button class="btn sm ${n ? '' : 'primary'}" data-fix="${n}">${esc(f.fix.label)}</button>` : ''}</div>`).join('')
       || '<div class="crash-item"><div class="grow"><b>Причину не удалось определить</b><p class="small muted">Посмотрите последние строки в консоли.</p></div></div>'}</div>
     <div class="foot">${info.crash ? `<button class="btn ghost" data-a="report">${ic('file')} Отчёт о вылете</button>` : ''}
-      <button class="btn ghost" data-a="logs">${ic('terminal')} Консоль</button><div class="grow"></div>
+      <button class="btn ghost" data-a="logs">${ic('terminal')} Консоль</button>
+      <button class="btn ghost" data-a="support">${ic('archive')} Отчёт для поддержки</button><div class="grow"></div>
       <button class="btn" data-close>Закрыть</button><button class="btn primary" data-a="play">${ic('play')} Запустить снова</button></div>`, { wide: true });
   m.onclick = async (e) => {
     const fixBtn = e.target.closest('[data-fix]');
@@ -341,10 +349,12 @@ function showCrash(info) {
       const fix = items[+fixBtn.dataset.fix].fix;
       if (fix.action === 'logs') { m.close(); return go('logs'); }
       if (fix.action === 'find_mod') { m.close(); return go('catalog', { instance: info.instance, query: fix.arg }); }
+      if (fix.action === 'open_worlds') { m.close(); return go('instance', { id: info.instance || S.selected?.id, tab: 'worlds' }); }
       const r = await safe(api.crash_fix(info.instance || '', fix.action, fix.arg));
       if (r && r.ok) {
         toast(r.ok); fixBtn.disabled = true; fixBtn.innerHTML = `${ic('check')} Готово`; hydrateIcons(fixBtn);
         if (fix.action === 'java_auto') S.config.java_auto = true;
+        if (fix.action === 'clear_jvm') S.config.extra_jvm_args = '';
         reloadInstances();
       } else if (r) toast(r.error, 'error');
       return;
@@ -352,6 +362,7 @@ function showCrash(info) {
     const a = e.target.closest('[data-a]')?.dataset.a;
     if (a === 'logs') { m.close(); go('logs'); }
     if (a === 'report') api.open_folder('crash-reports', info.instance || S.selected?.id || '');
+    if (a === 'support') { m.close(); openSupportReport(S.instances.find((i) => i.id === info.instance) || S.selected); }
     if (a === 'play') { m.close(); if (info.instance) selectInstance(info.instance); play(); }
   };
 }
