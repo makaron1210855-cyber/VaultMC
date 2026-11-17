@@ -161,6 +161,23 @@ test('список модов в комнате очищается: плохой
   assert.deepEqual(seen.data.info.mods.map((m) => m.id), ['sodium']);
 });
 
+test('данные ретранслятора проходят в комнату и статус, кривые отбрасываются', async () => {
+  const e = env();
+  await reg(e, 'Host_1', TOKEN_A);
+  const relay = { port: 25601, token: 'f'.repeat(32) };
+  const open = await post(e, '/api/room', { ...as('Host_1', TOKEN_A), action: 'open', info: { relay } });
+  assert.deepEqual((await get(e, '/api/room/' + open.data.code)).data.info.relay, relay);
+  const bad = await post(e, '/api/room', { ...as('Host_1', TOKEN_A), action: 'open', info: { relay: { port: '1; rm', token: 'zz' } } });
+  assert.equal((await get(e, '/api/room/' + bad.data.code)).data.info.relay, null);
+
+  await reg(e, 'Friend_2', TOKEN_B);
+  await post(e, '/api/friends', { ...as('Friend_2', TOKEN_B), action: 'request', other: 'Host_1' });
+  await post(e, '/api/friends', { ...as('Host_1', TOKEN_A), action: 'accept', other: 'Friend_2' });
+  await post(e, '/api/presence', { ...as('Host_1', TOKEN_A), status: { state: 'playing', relay } });
+  const list = await post(e, '/api/friends', { ...as('Friend_2', TOKEN_B), action: 'list' });
+  assert.deepEqual(list.data.status.Host_1.relay, relay);
+});
+
 test('неверный ключ не открывает комнату (403)', async () => {
   const e = env();
   await reg(e, 'Host_1', TOKEN_A);

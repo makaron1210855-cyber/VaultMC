@@ -118,6 +118,12 @@ body::after {   /* тонкая светящаяся линия под верх�
 .tb-online .heads { display: flex; }
 .tb-online canvas { width: 26px; height: 26px; border-radius: 8px; image-rendering: pixelated; border: 2px solid var(--bg); margin-left: -8px; background: var(--panel3); }
 .tb-online canvas:first-child { margin-left: 0; }
+/* связь с другом во время игры (web/js/net.js): точка-цвет + задержка, подробности — в подсказке */
+.net-chip { display: none; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 10px; font-size: 12px; font-weight: 800;
+  background: var(--panel3); border: 1px solid var(--line, rgba(255, 255, 255, .08)); color: var(--muted, #9aa3b2); white-space: nowrap; }
+.net-chip.on { display: inline-flex; }
+.net-chip i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.net-chip.good { color: var(--ok); } .net-chip.mid { color: var(--warn); } .net-chip.bad { color: var(--err); }
 .tb-online:hover { background: rgba(43, 212, 107, .14); }
 
 .win-buttons { display: flex; margin-left: 2px; }

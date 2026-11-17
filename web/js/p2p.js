@@ -1,7 +1,7 @@
 /* Прямое подключение к другу (как в XMCL): WebRTC-канал между окнами лаунчеров.
  * Байты игры идут: игра ⇄ мост в Python (127.0.0.1) ⇄ WebSocket ⇄ этот файл ⇄ RTCDataChannel ⇄ друг.
  * Сервер VaultMC нужен только чтобы обменяться «приглашениями» (SDP); сами данные идут напрямую.
- * Если напрямую не соединилось (строгий NAT у провайдера) — заходим через туннель e4mc, если он открыт.
+ * Порядок для гостя (rooms.js joinFriend): ретранслятор VaultMC → этот способ → туннель e4mc.
  */
 const P2P_ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
 const P2P = { host: null, guest: null };
@@ -103,7 +103,10 @@ function p2pMonitor(pc, label, stat) {
       if (sel) {
         const l = rep.get(sel.localCandidateId), rm = rep.get(sel.remoteCandidateId);
         path = `${(l && l.candidateType) || '?'}→${(rm && rm.candidateType) || '?'}`;
-        if (sel.currentRoundTripTime != null) rtt = `${Math.round(sel.currentRoundTripTime * 1000)} мс`;
+        if (sel.currentRoundTripTime != null) {
+          stat.rtt = Math.round(sel.currentRoundTripTime * 1000);   // для индикатора связи (web/js/net.js)
+          rtt = `${stat.rtt} мс`;
+        }
       }
     } catch (e) { /* статистика недоступна */ }
     if (!told) { told = true; log(`путь ${path || 'неизвестен'} (relay = через ретранслятор Cloudflare, host/srflx = напрямую)${rtt ? ', задержка ' + rtt : ''}`); }
@@ -198,10 +201,10 @@ async function p2pJoin(host, onStatus = () => {}, code = '', limitMs = 130000) {
   if (sent.error) throw new Error(sent.error);
   onStatus(`Жду ответа от ${host} (обычно секунды, иногда до 2 минут)...`);
   const started = Date.now();
-  const deadline = started + limitMs;                 // бесплатный сервер (Cloudflare KV) иногда передаёт приглашение до минуты в каждую сторону
-  // Если двое заходят к одному хозяину одновременно, сервер мог сохранить приглашение только одного.
-  // Поэтому без ответа через 35 и 75 с отправляем приглашение ещё раз (хозяин не ответит дважды на одно и то же).
-  const resendAt = [35000, 75000];
+  const deadline = started + limitMs;
+  // Сервер v6 приглашения не теряет; один повтор через 15 с — на случай, если хозяин как раз перезапускал лаунчер
+  // (хозяин не ответит дважды на одно и то же).
+  const resendAt = [15000];
   let answer = null, pollFails = 0;
   while (Date.now() < deadline && P2P.guest === st) {
     await new Promise((r) => setTimeout(r, 2500));
@@ -239,8 +242,10 @@ async function p2pJoin(host, onStatus = () => {}, code = '', limitMs = 130000) {
   };
   await new Promise((resolve) => { ctl.onopen = resolve; setTimeout(resolve, 1500); });
   pc.addEventListener('connectionstatechange', () => {
-    if (['failed', 'closed', 'disconnected'].includes(pc.connectionState) && P2P.guest === st) {
+    if (['failed', 'closed'].includes(pc.connectionState) && P2P.guest === st && !st.lost) {
+      st.lost = true;
       toast(`Прямое соединение с ${host} прервалось`, 'warn', 8000);
+      document.dispatchEvent(new CustomEvent('p2p-lost', { detail: { host } }));   // rooms.js переключит на ретранслятор
     }
   });
   safe(api.p2p_guest_server(host, prep.port));   // мир друга — в «Сетевой игре», чтобы зайти снова после выхода в меню

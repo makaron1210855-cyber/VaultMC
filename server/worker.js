@@ -334,10 +334,13 @@ const P2P_TTL = 10 * MIN;
 const cleanRoomMods = (list) => (Array.isArray(list) ? list : []).slice(0, 40)
   .filter((m) => m && /^[a-z0-9_-]{1,64}$/.test(String(m.id || '')) && /^[0-9a-f]{40}$/.test(String(m.sha1 || '')))
   .map((m) => ({ id: String(m.id), name: String(m.name || m.id).slice(0, 60), sha1: String(m.sha1), size: Math.max(0, Math.min(2147483647, Math.floor(Number(m.size) || 0))) }));
+// комната на ретрансляторе VaultMC с ключом (лаунчер 6.4.14+): порт и ключ видят только друзья и те, у кого есть код
+const cleanRelay = (r) => (r && Number.isInteger(r.port) && r.port > 0 && r.port < 65536 && /^[0-9a-f]{32}$/.test(String(r.token || ''))
+  ? { port: r.port, token: String(r.token) } : null);
 const cleanRoomInfo = (i) => ({
   instance: String((i && i.instance) || '').slice(0, 60), version: String((i && i.version) || '').slice(0, 30),
   loader: String((i && i.loader) || '').slice(0, 20), room: String((i && i.room) || '').slice(0, 120), p2p: !!(i && i.p2p),
-  mods: cleanRoomMods(i && i.mods),
+  mods: cleanRoomMods(i && i.mods), relay: cleanRelay(i && i.relay),
 });
 
 export class Social {
@@ -534,6 +537,7 @@ export class Social {
       share: CODE_RE.test(String(st.share || '')) ? st.share : '',
       code: CODE_RE.test(String(st.code || '')) ? st.code : '',   // код комнаты (друзьям — чтобы зайти без лишних шагов)
       p2p: !!st.p2p,                            // хозяин принимает прямые подключения
+      relay: cleanRelay(st.relay),              // комната на ретрансляторе VaultMC (порт и ключ)
       at: Date.now(),
     };
     this.sql.exec('INSERT OR REPLACE INTO presence (k, data, exp) VALUES (?, ?, ?)', k, JSON.stringify(clean), Date.now() + 40 * MIN);

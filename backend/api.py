@@ -207,6 +207,8 @@ class Api:
         self._room_mode = False
         self._room_code = ""
         self._room_mods: list = []        # моды хозяина, которые нужны и гостю (core/roommods.py)
+        self._room_relay = None           # {"port", "token"} — комната на ретрансляторе VaultMC с ключом
+        self._relay_guest = None          # гость: мост 127.0.0.1 → ретранслятор (core/relay.py RelayGuest)
         self._guest_server = ""           # сборка, в чей список серверов добавлен мир друга
         self._running_instance = ""
         self._running_account = ""
@@ -241,8 +243,10 @@ class Api:
         elif event == "room_address":
             if not self._room_mode:      # мир открыли не как комнату — адрес не показываем и друзьям не шлём
                 return
-            if getattr(self, "_relay", None) and self._relay.public_port:
-                return                   # адрес ретранслятора главнее туннеля e4mc
+            relay = getattr(self, "_relay", None)
+            if relay and relay.public_port and not relay.secure:
+                return                   # комната без ключа: её адрес на ретрансляторе главнее туннеля e4mc
+            # комната с ключом: адрес e4mc — запасной путь (и для друзей без VaultMC)
             self._room_address = str(payload)
             self._room_update()
             self._presence_soon()
@@ -267,6 +271,7 @@ class Api:
                 self._lan_open = False
                 self._lan_port = 0
                 self._room_stop()
+                self.relay_guest_stop()
                 self._guest_server_remove()
             self._toggle_window(payload)
             if payload == "idle" and self._p2p_hosting:
@@ -282,7 +287,7 @@ class Api:
         inst = self._instances.get(self._running_instance)
         return {"instance": inst.name if inst else "", "version": inst.game_version if inst else "",
                 "loader": inst.loader if inst else "", "room": self._room_address, "p2p": self._p2p_hosting,
-                "mods": self._room_mods}
+                "mods": self._room_mods, "relay": self._room_relay}
 
     def _room_start(self, port: int) -> None:
         """Мир открыт как комната: открываем её на ретрансляторе VaultMC и берём на сервере код комнаты."""
@@ -325,9 +330,14 @@ class Api:
 
         def on_port(pub: int) -> None:
             from core.relay import RELAY_HOST
-            self._room_address = f"{RELAY_HOST}:{pub}"
+            if relay.secure:   # с ключом: гостям — порт и ключ (заходят через свой лаунчер), адрес не публикуем
+                self._room_relay = {"port": pub, "token": relay.token}
+            else:              # ретранслятор старой версии — как раньше, общий адрес
+                self._room_relay = None
+                self._room_address = f"{RELAY_HOST}:{pub}"
             self._room_update()
             self._presence_soon()
+            self._emit("room_address", self._room_address)
         relay = RelayHost(port, lambda m: self._on_runner_event("log", m), on_port)
         self._relay = relay
         try:
@@ -359,6 +369,7 @@ class Api:
         code, acc = self._room_code, self._accounts.active
         self._relay_stop()
         self._room_mode, self._room_code, self._room_address = False, "", ""
+        self._room_relay = None
         if not code or not acc:
             return
 
@@ -383,7 +394,7 @@ class Api:
 
     def room_state(self) -> dict:
         return {"mode": self._room_mode, "code": self._room_code, "address": self._room_address,
-                "lanOpen": self._lan_open, "p2p": self._p2p_hosting}
+                "lanOpen": self._lan_open, "p2p": self._p2p_hosting, "relay": bool(self._room_relay)}
 
     def room_lookup(self, code: str) -> dict:
         """Гость ввёл код комнаты — к кому и в какую версию заходить."""
@@ -445,6 +456,34 @@ class Api:
         except Exception as exc:  # noqa: BLE001
             _log(f"guest server: {exc}")
         return {"ok": True}
+
+    # ---------------------------------------------------------------- гость через ретранслятор VaultMC
+    def relay_guest_start(self, host: str, port, token: str) -> dict:
+        """Зайти к другу через ретранслятор: проверяем комнату, поднимаем мост на 127.0.0.1 и кладём мир друга
+        в «Сетевую игру». Вылетел или вышел в меню — заходите оттуда снова, мост живёт до закрытия игры."""
+        from core.relay import RelayError, RelayGuest
+        if not re.fullmatch(r"[0-9a-f]{32}", str(token or "")) or not str(port).isdigit():
+            return {"error": "Неверные данные комнаты", "reason": "bad"}
+        self.relay_guest_stop()
+        guest = RelayGuest(int(port), str(token), lambda m: self._on_runner_event("log", m))
+        try:
+            guest.check()
+        except RelayError as exc:
+            return {"error": str(exc), "reason": exc.reason}
+        local = guest.start()
+        self._relay_guest = guest
+        self.p2p_guest_server(host, local)
+        return {"ok": True, "address": f"127.0.0.1:{local}"}
+
+    def relay_guest_stop(self) -> None:
+        guest, self._relay_guest = self._relay_guest, None
+        if guest:
+            guest.stop()
+
+    def net_status(self) -> dict:
+        """Связь гостя через ретранслятор: задержка, сколько данных прошло, последняя ошибка. Пусто — не подключены."""
+        guest = self._relay_guest
+        return {"mode": "relay", **guest.stats()} if guest else {}
 
     def _guest_server_remove(self) -> None:
         from core.worlds import list_servers, save_servers
@@ -1133,7 +1172,8 @@ class Api:
                 "instance": inst.name if inst else "", "version": inst.game_version if inst else "",
                 "loader": inst.loader if inst else "", "room": self._room_address if playing and self._room_mode else "",
                 "p2p": bool(playing and self._room_mode and self._p2p_hosting),
-                "code": self._room_code if playing and self._room_mode else ""}
+                "code": self._room_code if playing and self._room_mode else "",
+                "relay": self._room_relay if playing and self._room_mode else None}
 
     def _presence_soon(self) -> None:
         """Отправить статус в фоне. Повторы и одинаковые статусы отсекаем — у бесплатного KV ~1000 записей в сутки."""

@@ -17,7 +17,7 @@ const HEADS = {};   // ник → {p: обещание скина, at} — чт�
 
 // подпись сборки в выпадающем списке: загрузчик и версия одинаково для всех сборок («Fabric 1.20.1», «Forge 1.20.1»)
 const optLabel = (i) => `${i.loaderLabel || i.loader || ''} ${i.game_version || ''}`.trim() || i.name || '';
-const isOpenWorld = (st) => !!(st && st.state === 'playing' && (st.room || st.p2p));
+const isOpenWorld = (st) => !!(st && st.state === 'playing' && (st.room || st.p2p || st.relay));
 
 async function paintHeads(root) {
   $$('canvas[data-head]', root).forEach(async (cv) => {
@@ -244,7 +244,7 @@ function hostPanelHtml() {
           <button class="btn primary" data-h="invite">${ic('copy')} Скопировать приглашение</button></div>
         <p class="fr-small">Отправьте код кому угодно — добавлять в друзья не нужно. Друг вводит его в «Зайти к другу». Друзья из списка просто увидят окошко «Зайти».</p>`
         : `<p>Друзья из вашего списка уже видят окошко «Зайти». ${ic('refresh')} Получаю код для остальных...</p>`}
-      ${addr ? `<details class="fr-more"><summary>Адрес e4mc (если код не работает)</summary>
+      ${addr ? `<details class="fr-more"><summary>Адрес для друзей без VaultMC</summary>
           <div class="fr-addr"><span class="mono grow no-tr">${esc(addr)}</span><button class="btn sm" data-h="copy">${ic('copy')}</button></div></details>` : ''}</div>`;
   }
   if (stage === 5) {   // мир открыт для сети обычным способом (Radmin, одна Wi-Fi) — комнату не создавали
@@ -519,25 +519,58 @@ async function joinFriend(name, st, code = '') {
   if (pick.length && !pick.some((i) => i.id === S.selected?.id)) selectInstance(pick[0].id);
   if (!same.length && st.loader && pick.length) toast(`У вас нет сборки ${st.loader} ${st.version} — захожу в «${pick[0].name}». Если игра попросит моды, возьмите у друга код сборки`, 'warn', 9000);
   if (!await roomModsGate(name, st, code)) return;
-  if (!st.p2p) return joinAddress(st.room);
-  // сначала напрямую (быстрее, без чужих серверов), не вышло — через туннель e4mc
+  JOINED.name = name; JOINED.st = st;
+  // Порядок: ретранслятор VaultMC (проще и надёжнее всего) → напрямую → e4mc. Каждый следующий — если не вышел предыдущий.
+  if (st.relay) {
+    const r = await safe(api.relay_guest_start(name, st.relay.port, st.relay.token));
+    if (r && r.address) {
+      toast(`Захожу к ${name} через ретранслятор VaultMC`);
+      netWatch('relay');
+      S.config.server_address = r.address;
+      return play(r.address);
+    }
+    if (r && r.reason === 'gone') return toast(`${name} уже закрыл мир`, 'warn');
+    if (r && r.error && (st.p2p || st.room)) toast(`Ретранслятор: ${r.error}. Пробую другой способ`, 'warn', 7000);
+    else if (r && r.error) return toast(r.error, 'error', 9000);
+  }
+  if (!st.p2p) return st.room ? viaE4mc(name, st.room) : undefined;
   const m = openModal(`<h3>Подключение к ${esc(name)}</h3>
     <div class="share-wait muted small" id="p2pStatus">${ic('refresh')} Готовлю прямое соединение...</div>
-    <p class="note">Напрямую — быстрее и без посредников. Если у провайдера строгий NAT и напрямую не выйдет${st.room ? ', лаунчер сам зайдёт через e4mc' : ''}.</p>
+    <p class="note">Если у провайдера строгий NAT и напрямую не выйдет${st.room ? ', лаунчер сам зайдёт через e4mc' : ''}.</p>
     <div class="foot"><button class="btn ghost" data-close>Отмена</button></div>`, { onClose: () => { if (!m.__done) p2pGuestStop(); } });
   const status = (t) => { const el = $('#p2pStatus', m); if (el) el.lastChild.textContent = ' ' + t; };
   try {
-    const address = await p2pJoin(name, status, code, st.room ? 100000 : 130000);   // сервер передаёт приглашение до минуты в каждую сторону — меньше 100 с ждать нельзя
+    // приглашения сервер передаёт сразу (сервер v6), друг отвечает за 5–10 с — долго ждать незачем
+    const address = await p2pJoin(name, status, code, st.room ? 30000 : 45000);
     if (!m.isConnected) return;
     m.__done = true; m.close();
     toast(`Соединились с ${name} напрямую — запускаю игру`);
+    netWatch('p2p');
     S.config.server_address = address;
     await play(address);
   } catch (e) {
     if (!m.isConnected) return;
     m.__done = true; m.close(); p2pGuestStop();
     const why = String(e && e.message || e);
-    if (st.room) { toast(`${why}. Захожу через e4mc`, 'warn', 9000); joinAddress(st.room); }
+    if (st.room) viaE4mc(name, st.room, why);
     else toast(why, 'error', 9000);
   }
 }
+
+function viaE4mc(name, address, why = '') {
+  toast(`${why ? why + '. ' : ''}Захожу к ${name} через e4mc`, why ? 'warn' : 'info', 9000);
+  netWatch('e4mc');
+  return joinAddress(address);
+}
+
+/* Последний друг, к которому заходили: если прямой канал оборвётся посреди игры, переключаемся на ретранслятор */
+const JOINED = { name: '', st: null };
+document.addEventListener('p2p-lost', async () => {
+  const { name, st } = JOINED;
+  if (!st || !st.relay || S.state !== 'running') return;
+  const r = await safe(api.relay_guest_start(name, st.relay.port, st.relay.token));
+  if (r && r.address) {
+    netWatch('relay');
+    toast(`Прямая связь с ${name} оборвалась. Зайдите снова: «Сетевая игра» → «VaultMC · мир ${name}» — теперь через ретранслятор`, 'warn', 15000);
+  }
+});
