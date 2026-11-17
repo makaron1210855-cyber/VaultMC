@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VaultMC промо</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=block" rel="stylesheet">
+<style>
+:root{ --fg:#f1f4f8; --mut:rgba(241,244,248,.62); }
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#05060a;height:100%;overflow:hidden}
+body{font-family:"Manrope",system-ui,sans-serif;color:var(--fg);display:grid;place-items:center}
+#stage{width:1080px;height:1920px;position:relative;overflow:hidden;background:#05060a;transform-origin:center center;flex:none}
+
+/* ---------- сцены и переходы ---------- */
+.scene{position:absolute;inset:0;opacity:0;animation:fadeIn .5s ease both;animation-delay:calc(var(--s)*1s)}
+.fo{position:absolute;inset:0;animation:fadeOut .5s ease both;animation-delay:calc((var(--e) - .5)*1s)}
+.bg{position:absolute;inset:-200px;filter:blur(90px);
+  background:
+   radial-gradient(520px 520px at 25% 30%, color-mix(in srgb,var(--c) 55%, transparent), transparent 70%),
+   radial-gradient(640px 640px at 80% 75%, color-mix(in srgb,var(--c2) 70%, transparent), transparent 70%),
+   radial-gradient(900px 700px at 50% 110%, color-mix(in srgb,var(--c) 25%, transparent), transparent 70%),
+   #06070b;
+  animation:drift 9s ease-in-out infinite alternate}
+.content{position:absolute;inset:0;animation:blurIn .6s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--s)*1s)}
+.ci{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 70px 150px;
+  animation:blurOut .5s ease-in both;animation-delay:calc((var(--e) - .5)*1s)}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes fadeOut{from{opacity:1}to{opacity:0}}
+@keyframes blurIn{from{filter:blur(28px);opacity:0;transform:scale(1.05)}to{filter:blur(0);opacity:1;transform:none}}
+@keyframes blurOut{from{filter:blur(0);opacity:1;transform:none}to{filter:blur(28px);opacity:0;transform:scale(.96)}}
+@keyframes drift{from{transform:translate(-40px,-30px) scale(1)}to{transform:translate(50px,40px) scale(1.12)}}
+
+/* ---------- элементы с задержкой ---------- */
+.a{animation-delay:calc((var(--s) + var(--d,0))*1s);animation-fill-mode:both}
+.up{animation-name:up;animation-duration:.7s;animation-timing-function:cubic-bezier(.2,.8,.2,1)}
+.pop{animation-name:pop;animation-duration:.55s;animation-timing-function:cubic-bezier(.3,1.5,.5,1)}
+.show{animation-name:fadeIn;animation-duration:.4s}
+.hide{animation-name:fadeOut;animation-duration:.4s}
+.press{animation-name:press;animation-duration:.35s}
+@keyframes up{from{opacity:0;transform:translateY(46px);filter:blur(10px)}to{opacity:1;transform:none;filter:blur(0)}}
+@keyframes pop{from{opacity:0;transform:scale(.5)}to{opacity:1;transform:scale(1)}}
+@keyframes press{0%,100%{transform:scale(1)}45%{transform:scale(.93);filter:brightness(1.25)}}
+
+/* ---------- общий вид ---------- */
+.pill{font-weight:800;font-size:36px;padding:10px 30px;border-radius:999px;background:var(--c);color:#0a0c10;letter-spacing:.04em}
+h1{font-weight:800;font-size:86px;line-height:1.08;text-align:center;margin:34px 0 56px;letter-spacing:-.01em}
+h1 em{font-style:normal;color:var(--c)}
+.card{width:100%;border-radius:48px;padding:40px;background:color-mix(in srgb,var(--c) 9%, rgba(18,20,26,.72));
+  border:2px solid color-mix(in srgb,var(--c) 22%, transparent);box-shadow:0 40px 120px rgba(0,0,0,.45)}
+.cap{font-size:42px;line-height:1.35;color:var(--mut);text-align:center;margin-top:52px;font-weight:600}
+.row{display:flex;align-items:center;gap:28px;padding:22px 8px}
+.row+.row{border-top:2px solid rgba(255,255,255,.06)}
+.ico{width:96px;height:96px;border-radius:28px;display:grid;place-items:center;flex:none;font-weight:800;font-size:44px;color:#0a0c10;background:var(--c)}
+.t1{font-size:42px;font-weight:700}
+.t2{font-size:32px;color:var(--mut);font-weight:600;margin-top:4px}
+.grow{flex:1;min-width:0}
+.btn{display:flex;align-items:center;justify-content:center;gap:18px;height:120px;border-radius:999px;background:var(--c);color:#0a0c10;font-weight:800;font-size:44px;margin-top:32px}
+.btn.ghost{background:rgba(255,255,255,.08);color:var(--fg)}
+.chip{display:inline-flex;align-items:center;padding:14px 30px;border-radius:999px;font-size:34px;font-weight:700;background:color-mix(in srgb,var(--c) 20%, transparent);color:var(--fg);border:2px solid color-mix(in srgb,var(--c) 40%, transparent)}
+.chips{display:flex;flex-wrap:wrap;gap:18px;justify-content:center}
+.field{height:110px;border-radius:32px;background:rgba(0,0,0,.28);display:flex;align-items:center;padding:0 34px;font-size:40px;font-weight:600;gap:6px}
+.lbl{font-size:30px;color:var(--mut);font-weight:700;margin:26px 0 14px 12px}
+.caret{display:inline-block;width:4px;height:48px;background:var(--c);margin-left:4px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.tc{opacity:0;animation-name:fadeIn;animation-duration:.01s}
+.chk{width:62px;height:62px;border-radius:50%;border:4px solid rgba(255,255,255,.3);flex:none;position:relative}
+.chk::after{content:"";position:absolute;inset:-4px;border-radius:50%;background:var(--c) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230a0c10' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/60% no-repeat;
+  animation:pop .45s cubic-bezier(.3,1.6,.5,1) both;animation-delay:calc((var(--s) + var(--d,0))*1s)}
+.bar{height:22px;border-radius:99px;background:rgba(255,255,255,.1);overflow:hidden;margin-top:26px}
+.bar i{display:block;height:100%;width:100%;background:var(--c);border-radius:99px;transform-origin:left;animation:grow 1.6s cubic-bezier(.4,.1,.2,1) both;animation-delay:calc((var(--s) + var(--d,0))*1s)}
+@keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.mark{position:absolute;left:0;right:0;bottom:70px;display:flex;justify-content:center;align-items:center;gap:16px;font-weight:800;font-size:34px;color:rgba(255,255,255,.75)}
+.mark img{width:58px;height:58px;border-radius:16px}
+.dot{width:20px;height:20px;border-radius:50%;background:#4ade80;box-shadow:0 0 0 6px rgba(74,222,128,.2);flex:none}
+.av{width:96px;height:96px;border-radius:24px;flex:none;image-rendering:pixelated;display:grid;grid-template-columns:repeat(4,1fr);overflow:hidden}
+.av b{display:block}
+.stack{position:relative}
+.stack>*{position:relative}
+.stack>.over{position:absolute;inset:0}
+</style>
+</head>
+<body>
+<div id="stage">
+
+<!-- 0. Заставка -->
+<section class="scene" style="--s:0;--e:3.6;--c:#2fd3e6;--c2:#b8860b">
+ <div class="fo"><div class="bg"></div>
+ <div class="content"><div class="ci" style="justify-content:center;padding-top:0;padding-bottom:160px">
+  <img src="logo.png" class="a pop" style="--d:.15;width:300px;height:300px;border-radius:72px;box-shadow:0 40px 140px rgba(47,211,230,.35)">
+  <h1 class="a up" style="--d:.5;font-size:120px;margin:56px 0 20px">Vault<em>MC</em></h1>
+  <div class="a up" style="--d:.8;font-size:50px;font-weight:700;color:var(--mut);text-align:center;line-height:1.3">лаунчер Minecraft,<br>в котором всё уже есть</div>
+  <div class="chips a up" style="--d:1.3;margin-top:60px">
+   <span class="chip">бесплатно</span><span class="chip">без лицензии</span><span class="chip">без Radmin</span>
+  </div>
+ </div></div></div>
+</section>
+
+<!-- 1. Аккаунты -->
+<section class="scene" style="--s:3.3;--e:8.1;--c:#38bdf8;--c2:#1e40af">
+ <div class="fo"><div class="bg"></div>
+ <div class="content"><div class="ci">
+  <div class="pill a pop" style="--d:.1">1 / 8</div>
+  <h1 class="a up" style="--d:.2">Лицензия<br><em>не нужна</em></h1>
+  <div class="card a up" style="--d:.4">
+   <div class="lbl" style="margin-top:0">ник</div>
+   <div class="field"><span data-type="Steve_Pro" data-d="1.0" data-cps="12"></span><span class="caret"></span></div>
+   <div class="lbl">пароль</div>
+   <div class="field"><span data-type="••••••••" data-d="1.9" data-cps="14"></span></div>
+   <div class="btn a press" style="--d:2.7">Войти</div>
+  </div>
+  <div class="chips a up" style="--d:3.0;margin-top:40px"><span class="chip">оффлайн-ник</span><span class="chip">Ely.by</span><span class="chip">несколько аккаунтов</span></div>
+  <div class="cap a up" style="--d:.7">ник с паролем или Ely.by со скинами,<br>переключение в один клик</div>
+ </div></div>
+ <div class="mark"><img src="logo.png">VaultMC</div></div>
+</section>
+
+<!-- 2. Друзья -->
+<section class="scene" style="--s:7.8;--e:12.8;--c:#a78bfa;--c2:#6d28d9">
+ <div class="fo"><div class="bg"></div>
+ <div class="content"><div class="ci">
+  <div class="pill a pop" style="--d:.1">2 / 8</div>
+  <h1 class="a up" style="--d:.2">Игра с друзьями<br><em>без Radmin</em></h1>
+  <div class="card a up" style="--d:.4;padding:26px 40px">
+   <div class="row"><div class="av" data-av="#7c3aed,#c4b5fd,#4c1d95,#ede9fe"></div><div class="grow"><div class="t1">Lera</div><div class="t2">играет · 1.20.1 Fabric</div></div><div class="dot"></div></div>
+   <div class="row"><div class="av" data-av="#0891b2,#67e8f9,#164e63,#cffafe"></div><div class="grow"><div class="t1">Danya</div><div class="t2">в сети</div></div><div class="dot"></div></div>
+   <div class="row"><div class="av" data-av="#ea580c,#fdba74,#7c2d12,#ffedd5"></div><div class="grow"><div class="t1">Kot_228</div><div class="t2">был вчера</div></div><div class="dot" style="background:#555;box-shadow:none"></div></div>
+  </div>
+  <div class="card a up" style="--d:1.6;margin-top:30px;border-color:var(--c)">
+   <div class="row" style="padding:0"><div class="ico">▶</div><div class="grow"><div class="t1">Lera открыла мир</div><div class="t2">можно зайти напрямую</div></div></div>
+   <div class="btn a press" style="--d:2.7">Зайти</div>
+  </div>
+  <div class="cap a up" style="--d:.7">без Hamachi и проброса портов —<br>лаунчер сам подберёт сборку и подключит</div>
+ </div></div>
+ <div class="mark"><img src="logo.png">VaultMC</div></div>
+</section>
+
+<!-- 3. Моды -->
+<section class="scene" style="--s:12.5;--e:17.3;--c:#4ade80;--c2:#166534">
+ <div class="fo"><div class="bg"></div>
+ <div class="content"><div class="ci">
+  <div class="pill a pop" style="--d:.1">3 / 8</div>
+  <h1 class="a up" style="--d:.2">Моды<br><em>в пару кликов</em></h1>
+  <div class="card a up" style="--d:.4">
+   <div class="field" style="margin-bottom:14px"><span style="color:var(--mut)">⌕&nbsp;</span><span data-type="оптимизация" data-d="0.9" data-cps="16"></span><span class="caret"></span></div>
+   <div class="row a up" style="--d:1.4"><div class="ico">S</div><div class="grow"><div class="t1">Sodium</div><div class="t2">Modrinth</div></div><div class="chk" style="--d:2.0"></div></div>
+   <div class="row a up" style="--d:1.5"><div class="ico">L</div><div class="grow"><div class="t1">Lithium</div><div class="t2">Modrinth</div></div><div class="chk" style="--d:2.2"></div></div>
+   <div class="row a up" style="--d:1.6"><div class="ico">J</div><div class="grow"><div class="t1">JEI</div><div class="t2">CurseForge</div></div><div class="chk" style="--d:2.4"></div></div>
+   <div class="btn a press" style="--d:2.8">Скачать 3 мода</div>
+   <div class="bar"><i style="--d:3.0"></i></div>
+  </div>
+  <div class="cap a up" style="--d:.7">Modrinth и CurseForge сразу, без ключей.<br>Отметил галочками — скачалось пачкой</div>
+ </div></div>
+ <div class="mark"><img src="logo.png">VaultMC</div></div>
+</section>
+
+<!-- 4. FPS -->
+<section class="scene" style="--s:17.0;--e:21.5;--c:#fb923c;--c2:#b91c1c">
+ <div class="fo"><div class="bg"></div>
+ <div class="content"><div class="ci">
+  <div class="pill a pop" style="--d:.1">4 / 8</div>
+  <h1 class="a up" style="--d:.2">Больше FPS —<br><em>одна кнопка</em></h1>
+  <div class="card a up" style="--d:.4">
+   <div class="row" style="padding:0">
+    <div class="grow"><div class="t1">Оптимизация</div><div class="t2">моды + пресет графики</div></div>
+    <div style="width:170px;height:96px;border-radius:99px;background:rgba(255,255,255,.12);position:relative;flex:none">
+     <div class="a show" style="--d:1.2;position:absolute;inset:0;border-radius:99px;background:var(--c)"></div>
+     <div class="knob a" style="--d:1.2;position:absolute;top:10px;left:10px;width:76px;height:76px;border-radius:50%;background:#fff;animation-name:knob;animation-duration:.35s"></div>
+    </div>
+   </div>
+   <svg viewBox="0 0 400 230" style="width:100%;margin-top:40px">
+    <path d="M40 210 A160 160 0 0 1 360 210" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="30" stroke-linecap="round"/>
+    <path class="arc a" style="--d:1.4" d="M40 210 A160 160 0 0 1 360 210" fill="none" stroke="var(--c)" stroke-width="30" stroke-linecap="round" pathLength="100" stroke-dasharray="100" />
+    <g class="needle a" style="--d:1.4;transform-origin:200px 210px"><line x1="200" y1="210" x2="200" y2="75" stroke="#fff" stroke-width="10" stroke-linecap="round"/></g>
+    <circle cx="200" cy="210" r="18" fill="#fff"/>
+   </svg>
+   <div class="chips" style="margin-top:30px">
+    <span class="chip a pop" style="--d:1.6">Sodium</span><span class="chip a pop" style="--d:1.75">Lithium</span><span class="chip a pop" style="--d:1.9">FerriteCore</span><span class="chip a pop" style="--d:2.05">+ ещё 3</span>
+   </div>
+  </div>
+  <div class="cap a up" style="--d:.7">моды оптимизации, графика,<br>приоритет игры и мощная видеокарта</div>
+ </div></div>
+ <div class="mark"><img src="logo.png">VaultMC</div></div>
+</section>
+<style>
+@keyframes knob{from{transform:none}to{transform:translateX(74px)}}
+@keyframes arcfill{from{stroke-dashoffset:100}to{stroke-dashoffset:8}}
+@keyframes needle{from{transform:rotate(-90deg)}to{transform:rotate(75deg)}}
+.arc{animation-name:arcfill;animation-duration:1.5s;animation-timing-function:cubic-bezier(.3,.1,.2,1)}
+.needle{animation-name:needle;animation-duration:1.5s;animation-timing-function:cubic-bezier(.3,1.25,.4,1)}
+</style>
+
+<!-- 5. Вылеты -->
+<section class="scene" style="--s:21.2;--e:26.0;--c:#f87171;--c2:#7f1d1d">
+ <div class="fo"><div class="bg"></div>
+ <div class="content"><div class="ci">
+  <div class="pill a pop" style="--d:.1">5 / 8</div>
+  <h1 class="a up" style="--d:.2">Игра упала?<br><em>Лаунчер починит</em></h1>
+  <div class="stack a up" style="--d:.4;width:100%">
+   <div class="card a hide" style="--d:2.6">
+    <div class="row" style="padding:0"><div class="ico">!</div><div class="grow"><div class="t1">Игра вылетела</div><div class="t2">разбор вылета</div></div></div>
+    <div class="field" style="margin-top:30px;height:auto;padding:30px 34px;line-height:1.35">Не хватает мода <b style="color:var(--c)">&nbsp;Fabric API</b></div>
+    <div class="btn a press" style="--d:2.1">Исправить</div>
+   </div>
+   <div class="card over a show" style="--d:2.6;--c:#4ade80;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center">
+    <div class="chk" style="--d:2.8;width:150px;height:150px;border:none"></div>
+    <div class="t1 a up" style="--d:3.0;margin-top:36px;font-size:52px">Готово</div>
+    <div class="t2 a up" style="--d:3.1">мод поставлен, можно играть</div>
+   </div>
+  </div>
+  <div class="cap a up" style="--d:.7">по-русски объяснит, что случилось:<br>мод, память, Java — и исправит</div>
+ </div></div>
+ <div class="mark"><img src="logo.png">VaultMC</div></div>
+</section>
+
+<!-- 6. Скины -->
+<section class="scene" style="--s:25.7;--e:30.5;--c:#f472b6;--c2:#9d174d">
+ <div class="fo"><div class="bg"></div>
+ <div class="content"><div class="ci">
+  <div class="pill a pop" style="--d:.1">6 / 8</div>
+  <h1 class="a up" style="--d:.2">Мастерская<br><em>скинов</em></h1>
+  <div class="card a up" style="--d:.4;display:flex;flex-direction:column;align-items:center">
+   <div id="pix" style="display:grid;grid-template-columns:repeat(8,1fr);gap:6px;width:520px;height:520px"></div>
+   <div class="chips" style="margin-top:40px">
+    <span class="chip a pop" style="--d:2.4">плащи</span><span class="chip a pop" style="--d:2.55">аксессуары</span><span class="chip a pop" style="--d:2.7">3D-просмотр</span>
+   </div>
+  </div>
+  <div class="cap a up" style="--d:.7">рисуй по пикселям или бери<br>один из 24 готовых образов</div>
+ </div></div>
+ <div class="mark"><img src="logo.png">VaultMC</div></div>
+</section>
+
+<!-- 7. Код сборки -->
+<section class="scene" style="--s:30.2;--e:34.6;--c:#fbbf24;--c2:#92400e">
+ <div class="fo"><div class="bg"></div>
+ <div class="content"><div class="ci">
+  <div class="pill a pop" style="--d:.1">7 / 8</div>
+  <h1 class="a up" style="--d:.2">Сборка<br><em>по коду</em></h1>
+  <div class="card a up" style="--d:.4">
+   <div class="t2" style="text-align:center;margin-bottom:30px">код сборки «Выживание 1.21.1»</div>
+   <div style="display:flex;gap:16px;justify-content:center">
+    <div class="cbox a pop" style="--d:1.0">V</div><div class="cbox a pop" style="--d:1.12">Q</div><div class="cbox a pop" style="--d:1.24">7</div><div class="cbox a pop" style="--d:1.36">K</div><div class="cbox a pop" style="--d:1.48">2</div><div class="cbox a pop" style="--d:1.6">M</div>
+   </div>
+   <div class="chips" style="margin-top:44px">
+    <span class="chip a pop" style="--d:2.0">версия</span><span class="chip a pop" style="--d:2.15">загрузчик</span><span class="chip a pop" style="--d:2.3">моды</span><span class="chip a pop" style="--d:2.45">настройки</span>
+   </div>
+  </div>
+  <div class="cap a up" style="--d:.7">отправь другу 6 символов —<br>у него будет точно такая же сборка</div>
+ </div></div>
+ <div class="mark"><img src="logo.png">VaultMC</div></div>
+</section>
+<style>.cbox{width:118px;height:150px;border-radius:30px;background:rgba(0,0,0,.3);border:3px solid var(--c);display:grid;place-items:center;font-size:76px;font-weight:800;color:var(--c)}</style>
+
+<!-- 8. И ещё -->
+<section class="scene" style="--s:34.3;--e:39.8;--c:#60a5fa;--c2:#0e7490">
+ <div class="fo"><div class="bg"></div>
+ <div class="content"><div class="ci">
+  <div class="pill a pop" style="--d:.1">8 / 8</div>
+  <h1 class="a up" style="--d:.2">И ещё</h1>
+  <div class="card a up" style="--d:.4;padding:20px 40px">
+   <div class="row" style="--c:#2fd3e6"><div class="ico">⚙</div><div class="grow t1">Автонастройка под ПК</div><div class="chk" style="--d:1.0"></div></div>
+   <div class="row" style="--c:#a78bfa"><div class="ico">◆</div><div class="grow t1">Vanilla, Fabric, Forge, NeoForge</div><div class="chk" style="--d:1.3"></div></div>
+   <div class="row" style="--c:#4ade80"><div class="ico">↻</div><div class="grow t1">Обновления и откат модов</div><div class="chk" style="--d:1.6"></div></div>
+   <div class="row" style="--c:#fbbf24"><div class="ico">✓</div><div class="grow t1">Проверка модов до запуска</div><div class="chk" style="--d:1.9"></div></div>
+   <div class="row" style="--c:#f472b6"><div class="ico">▣</div><div class="grow t1">Резервные копии миров</div><div class="chk" style="--d:2.2"></div></div>
+   <div class="row" style="--c:#fb923c"><div class="ico">A</div><div class="grow t1">Свой фон, цвет и English</div><div class="chk" style="--d:2.5"></div></div>
+  </div>
+  <div class="cap a up" style="--d:.7">Java лаунчер скачает сам —<br>ставить ничего не нужно</div>
+ </div></div>
+ <div class="mark"><img src="logo.png">VaultMC</div></div>
+</section>
+
+<!-- 9. Финал -->
+<section class="scene" style="--s:39.5;--e:999;--c:#2fd3e6;--c2:#b8860b">
+ <div class="fo"><div class="bg"></div>
+ <div class="content"><div class="ci" style="justify-content:center;padding-top:0;padding-bottom:120px">
+  <img src="logo.png" class="a pop" style="--d:.2;width:240px;height:240px;border-radius:60px;box-shadow:0 40px 140px rgba(47,211,230,.35)">
+  <h1 class="a up" style="--d:.5;margin:50px 0 50px">Скачать <em>VaultMC</em></h1>
+  <div class="btn a up" style="--d:.8;width:100%;height:auto;padding:34px 40px;justify-content:flex-start;gap:30px">
+   <div style="width:96px;height:96px;border-radius:50%;background:rgba(0,0,0,.18);display:grid;place-items:center;font-size:50px">↓</div>
+   <div style="text-align:left"><div style="font-size:30px;opacity:.7">сайт</div><div style="font-size:42px">vaultmc.vaultmc.workers.dev</div></div>
+  </div>
+  <div class="cap a up" style="--d:1.2">бесплатно · Windows 10 / 11<br>установка за 3 шага</div>
+ </div></div></div>
+</section>
+
+</div>
+<script>
+const T = 44.5;
+// печать текста по буквам
+document.querySelectorAll('[data-type]').forEach(el => {
+  const d0 = parseFloat(el.dataset.d), cps = parseFloat(el.dataset.cps);
+  [...el.dataset.type].forEach((ch, i) => {
+    const s = document.createElement('span');
+    s.className = 'tc a'; s.textContent = ch; s.style.setProperty('--d', (d0 + i / cps).toFixed(3));
+    el.appendChild(s);
+  });
+});
+// пиксельные аватарки друзей
+document.querySelectorAll('[data-av]').forEach(el => {
+  const p = el.dataset.av.split(','); let seed = p[0].length * 7;
+  for (let i = 0; i < 16; i++) { seed = (seed * 31 + 17) % 97; const b = document.createElement('b'); b.style.background = p[seed % 4]; el.appendChild(b); }
+});
+// скин рисуется по пикселям (своё лицо, не чужой персонаж)
+(() => {
+  const H='#3b2416',S='#e8b48a',s='#d49a70',E='#ffffff',P='#7c3aed',M='#9b5c3c',G='#f472b6';
+  const face=[
+    [H,H,H,H,H,H,H,H],[H,H,H,H,H,H,H,H],[H,S,S,S,S,S,S,H],[S,S,S,S,S,S,S,S],
+    [S,E,P,S,S,P,E,S],[S,S,S,s,s,S,S,S],[S,G,S,M,M,S,G,S],[S,S,M,M,M,M,S,S]];
+  const box=document.getElementById('pix'); let k=0;
+  face.forEach(r=>r.forEach(c=>{const b=document.createElement('b');b.className='a pop';b.style.cssText=`background:${c};border-radius:10px;--d:${(1.0+k*0.022).toFixed(3)}`;box.appendChild(b);k++;}));
+})();
+
+const anims = () => document.getAnimations();
+window.seek = t => anims().forEach(a => { a.pause(); a.currentTime = t * 1000; });
+window.T = T;
+const capture = location.search.includes('capture');
+function fit(){ const st=document.getElementById('stage'); const k=Math.min(innerWidth/1080, innerHeight/1920); st.style.transform = capture ? 'none' : `scale(${k})`; }
+addEventListener('resize', fit); fit();
+document.fonts.ready.then(() => {
+  window.ready = true;
+  if (capture) { seek(0); return; }
+  const t0 = performance.now();
+  anims().forEach(a => a.pause());
+  (function loop(){ const t = ((performance.now() - t0) / 1000) % (T + 1.5); seek(Math.min(t, T)); requestAnimationFrame(loop); })();
+});
+</script>
+</body>
+</html>

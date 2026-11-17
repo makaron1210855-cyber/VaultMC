@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VaultMC</title>
+  <link rel="icon" href="img/vaultmc-icon.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <!-- ===== Верхняя полоса: логотип, разделы вкладками, друзья в сети, аккаунт, кнопки окна (окно без системной рамки) ===== -->
+  <header class="titlebar">
+    <div class="tb-brand">
+      <img class="tb-mark" src="img/mark.png" alt="">
+      <b class="wordmark">Vault<span>MC</span></b><em id="appVersion"></em>
+    </div>
+    <nav class="nav tabs" id="nav">
+      <i class="tab-ink" id="tabInk"></i>
+      <button data-page="lobby" title="Играть"><i data-icon="play"></i><span>Играть</span></button>
+      <button data-page="instances" title="Сборки"><i data-icon="box"></i><span>Сборки</span></button>
+      <button data-page="catalog" title="Моды"><i data-icon="puzzle"></i><span>Моды</span></button>
+      <button data-page="skins" title="Скины"><i data-icon="shirt"></i><span>Скины</span></button>
+      <button data-page="friends" title="Друзья"><i data-icon="users"></i><span>Друзья</span><b class="tab-badge" id="friendsBadge"></b></button>
+    </nav>
+    <div class="tb-right">
+      <button class="tb-online" id="tbOnline" title="Друзья в сети"></button>
+      <div class="nav nav-bottom tb-tools">
+        <button class="tb-reload" id="tbReload" title="Обновить страницу (F5)"><i data-icon="refresh"></i></button>
+        <button data-page="logs" title="Консоль"><i data-icon="terminal"></i></button>
+        <button data-page="settings" title="Настройки"><i data-icon="gear"></i></button>
+      </div>
+      <div class="account-chip" id="accountChip"></div>
+      <div class="win-buttons" id="winButtons">
+        <button data-win="minimize" title="Свернуть"><i data-icon="minus"></i></button>
+        <button data-win="maximize" title="Развернуть"><i data-icon="square"></i></button>
+        <button data-win="close" class="close" title="Закрыть"><i data-icon="x"></i></button>
+      </div>
+    </div>
+    <!-- служебные элементы старой разметки: скрыты, но их заполняет код -->
+    <span class="hidden" id="tbPage"></span>
+    <button class="hidden" id="tbInstance"></button>
+    <div class="hidden" id="profileCard"></div>
+  </header>
+
+  <div class="shell" id="shell">
+    <!-- ===== Содержимое ===== -->
+    <main class="main">
+      <div class="pages" id="pages"></div>
+      <section class="playbar" id="playbar"></section>
+    </main>
+  </div>
+
+  <div class="modal-root" id="modalRoot"></div>
+  <div class="dropdown-root" id="dropdownRoot"></div>
+  <div class="toasts" id="toasts"></div>
+
+  <!-- Порядок важен: каждый файл использует функции предыдущих -->
+  <script src="js/i18n.js"></script>
+  <script src="js/icons.js"></script>
+  <script src="js/bridge.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/pixel.js"></script>
+  <script src="js/pages/lobby.js"></script>
+  <script src="js/pages/instances.js"></script>
+  <script src="js/pages/worlds.js"></script>
+  <script src="js/skin3d.js"></script>
+  <script src="js/lobby3d.js"></script>
+  <script src="js/pages/skins.js"></script>
+  <script src="js/pages/catalog.js"></script>
+  <script src="js/pages/rooms.js"></script>
+  <script src="js/pages/settings.js"></script>
+  <script src="js/pages/logs.js"></script>
+  <script src="js/p2p.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/tutorial.js"></script>
+  <script src="js/update.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

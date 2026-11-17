@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VaultMC — лаунчер Minecraft без лицензии</title>
+  <link rel="canonical" href="https://vaultmc.vaultmc.workers.dev/">
+  <meta property="og:url" content="https://vaultmc.vaultmc.workers.dev/">
+<meta name="description" content="VaultMC — бесплатный лаунчер Minecraft для Windows: все версии, сборки с модами из Modrinth и CurseForge, скины Ely.by, игра с друзьями без Radmin и оптимизация FPS. Лицензия не нужна.">
+<meta name="robots" content="index, follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="VaultMC — лаунчер Minecraft без лицензии">
+<meta property="og:description" content="Все версии, моды в один клик, скины Ely.by и игра с друзьями без Radmin. Бесплатно.">
+<meta property="og:image" content="https://vaultmc.vaultmc.workers.dev/img/preview.png">
+<meta name="theme-color" content="#07090c">
+<link rel="icon" href="img/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@600;700&family=Unbounded:wght@500;700;900&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+/* Хранилище: тёмная сталь страницы, алмазный голубой — на действиях и живом поле блоков, золото — на номерах и деталях, как в логотипе-сейфе. */
+:root {
+  --void: #07090c;
+  --slab: #0e1318;
+  --seam: #1d2730;
+  --ink: #eaf1f4;
+  --dust: #8fa0ab;
+  --neon: #2fd3e6;
+  --neon-deep: #12808f;
+  --gold: #f2b63c;
+  --pixel: "Pixelify Sans", "Unbounded", monospace;
+  --display: "Unbounded", "Arial Black", system-ui, sans-serif;
+  --body: "Golos Text", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--void); color: var(--ink); font: 17px/1.6 var(--body); }
+img { max-width: 100%; display: block; }
+a { color: var(--neon); }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; }
+h2 { font-size: clamp(28px, 4vw, 44px); font-weight: 900; text-transform: uppercase; letter-spacing: -.5px; line-height: 1.05; }
+.wrap { width: min(1180px, 100% - 40px); margin-inline: auto; }
+section { padding: 96px 0; border-top: 1px solid var(--seam); }
+.lead { color: var(--dust); max-width: 62ch; margin: 14px 0 0; }
+:focus-visible { outline: 3px solid var(--neon); outline-offset: 3px; border-radius: 6px; }
+
+/* ---------- кнопки ---------- */
+.btn {
+  display: inline-flex; align-items: center; gap: 12px; padding: 18px 26px; border: 0; cursor: pointer;
+  font: 700 17px var(--body); color: #031418; background: var(--neon); text-decoration: none;
+  clip-path: polygon(0 8px, 8px 8px, 8px 0, calc(100% - 8px) 0, calc(100% - 8px) 8px, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 8px calc(100% - 8px), 0 calc(100% - 8px));
+  transition: transform .15s, filter .2s;
+}
+.btn:hover { filter: brightness(1.1); transform: translateY(-2px); }
+.btn:active { transform: translateY(1px); }
+.btn.ghost { background: var(--slab); color: var(--ink); box-shadow: inset 0 0 0 2px var(--seam); }
+.btn svg { width: 22px; height: 22px; }
+.btn[disabled] { opacity: .6; cursor: progress; transform: none; }
+
+/* ---------- шапка ---------- */
+nav { position: sticky; top: 0; z-index: 10; background: rgba(6, 8, 10, .82); backdrop-filter: blur(10px); border-bottom: 1px solid var(--seam); }
+nav .wrap { display: flex; align-items: center; gap: 28px; height: 68px; }
+.brand { display: flex; align-items: center; gap: 10px; font: 700 24px var(--pixel); color: var(--ink); text-decoration: none; letter-spacing: .5px; }
+.brand img { width: 38px; height: 38px; filter: drop-shadow(0 3px 8px rgba(0,0,0,.5)); }
+.brand span { color: var(--neon); }
+nav .links { display: flex; gap: 22px; margin-left: auto; }
+nav .links a { color: var(--dust); text-decoration: none; font-weight: 600; font-size: 15px; }
+nav .links a:hover { color: var(--ink); }
+nav .btn { padding: 11px 18px; font-size: 15px; }
+
+/* ---------- первый экран ---------- */
+.hero { position: relative; overflow: hidden; border-top: 0; padding: 72px 0 64px; }
+#field { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .9; }
+.hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, var(--void) 30%, rgba(6, 8, 10, .55) 62%, rgba(6, 8, 10, .1)); pointer-events: none; }
+.hero .wrap { position: relative; z-index: 1; display: grid; grid-template-columns: 1.05fr 1fr; gap: 40px; align-items: center; }
+.tag { display: inline-flex; gap: 8px; align-items: center; font: 700 13px var(--mono); color: var(--neon); border: 1px solid rgba(47, 211, 230, .35); padding: 6px 12px; margin-bottom: 22px; }
+.tag i { width: 8px; height: 8px; background: var(--neon); box-shadow: 0 0 12px var(--neon); }
+h1 { font-size: clamp(38px, 6.2vw, 84px); font-weight: 900; line-height: .95; text-transform: uppercase; letter-spacing: -2px; }
+h1 span { color: var(--neon); }
+.withouts { display: flex; flex-wrap: wrap; gap: 10px; margin: 26px 0 30px; padding: 0; list-style: none; }
+.withouts li { font: 700 15px var(--mono); padding: 8px 12px; background: var(--slab); border: 1px solid var(--seam); }
+.withouts li s { color: var(--dust); text-decoration-color: var(--gold); text-decoration-thickness: 2px; }
+.cta { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+.meta { margin-top: 18px; color: var(--dust); font: 500 13px var(--mono); }
+.status { margin-top: 12px; min-height: 24px; font-weight: 600; color: var(--neon); }
+.status.err { color: #ff8b7b; }
+.window { border: 1px solid var(--seam); background: var(--slab); box-shadow: 0 40px 100px rgba(0, 0, 0, .6), 0 0 0 1px rgba(47, 211, 230, .08); transform: perspective(1400px) rotateY(-9deg) rotateX(3deg); transition: transform .5s; }
+.window:hover { transform: perspective(1400px) rotateY(-3deg); }
+.window .bar { display: flex; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--seam); }
+.window .bar i { width: 10px; height: 10px; background: var(--seam); }
+
+/* ---------- установка ---------- */
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 44px; counter-reset: step; }
+.step { position: relative; padding: 28px; background: var(--slab); border: 1px solid var(--seam); }
+.step::before { counter-increment: step; content: counter(step); position: absolute; right: 18px; top: 6px; font: 700 100px/1 var(--pixel); color: rgba(242, 182, 60, .16); }
+.step h3 { font-size: 22px; font-weight: 700; margin-bottom: 10px; }
+.step p { margin: 0 0 18px; color: var(--dust); }
+.pic { height: 132px; display: grid; place-items: center; background: var(--void); border: 1px dashed var(--seam); }
+.file { display: flex; flex-direction: column; align-items: center; gap: 8px; font: 700 14px var(--mono); }
+.file b { width: 52px; height: 62px; background: linear-gradient(135deg, #f4c44e 0 70%, #c99a28 70%); position: relative; }
+.file b::after { content: "EXE"; position: absolute; inset: auto 0 10px; text-align: center; font: 900 11px var(--display); color: #4a3505; }
+.file.bat b { background: linear-gradient(135deg, #e9f2ed 0 70%, #a9b8b0 70%); }
+.file.bat b::after { content: "BAT"; color: #20302a; }
+.menu { font: 600 14px var(--body); background: #1b2226; border: 1px solid #2a353b; width: 200px; }
+.menu div { padding: 7px 12px; color: var(--dust); }
+.menu div.on { background: var(--neon); color: #031418; }
+.click { font: 700 13px var(--mono); color: var(--neon); margin-top: 6px; }
+.done { margin-top: 16px; display: flex; gap: 16px; align-items: center; padding: 20px 24px; border: 1px solid rgba(47, 211, 230, .4); background: linear-gradient(90deg, rgba(47, 211, 230, .12), transparent); }
+.done img { width: 56px; height: 56px; border-radius: 13px; }
+.done b { font-family: var(--display); font-size: 19px; }
+.done span { display: block; color: var(--dust); font-size: 15px; }
+.req { margin-top: 22px; color: var(--dust); font-size: 15px; }
+
+/* ---------- возможности ---------- */
+.features { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; margin-top: 44px; background: var(--seam); border: 1px solid var(--seam); }
+.feat { padding: 26px 22px; background: var(--void); transition: background .25s; }
+.feat:hover { background: var(--slab); }
+.feat svg { width: 30px; height: 30px; color: var(--neon); margin-bottom: 16px; }
+.feat h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; line-height: 1.25; }
+.feat p { margin: 0; color: var(--dust); font-size: 15px; line-height: 1.5; }
+
+/* ---------- скриншоты ---------- */
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 36px 0 18px; }
+.tabs button { font: 700 14px var(--mono); padding: 10px 16px; background: var(--slab); color: var(--dust); border: 1px solid var(--seam); cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--neon); color: #031418; border-color: var(--neon); }
+.shot { border: 1px solid var(--seam); background: var(--slab); }
+.shot img { width: 100%; aspect-ratio: 1280 / 800; object-fit: cover; }
+.shot p { margin: 0; padding: 14px 18px; color: var(--dust); font-size: 15px; border-top: 1px solid var(--seam); }
+
+/* ---------- комнаты ---------- */
+.flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; gap: 14px; align-items: stretch; margin-top: 40px; }
+.node { padding: 22px; background: var(--slab); border: 1px solid var(--seam); }
+.node small { font: 700 12px var(--mono); color: var(--gold); }
+.node h3 { font-size: 17px; margin: 8px 0; }
+.node p { margin: 0; color: var(--dust); font-size: 15px; }
+.arrow { align-self: center; font: 900 26px var(--display); color: var(--neon); }
+code { font: 600 14px var(--mono); background: var(--void); border: 1px solid var(--seam); padding: 2px 7px; color: var(--ink); }
+
+/* ---------- вопросы ---------- */
+.faq { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 40px; }
+.qa { padding: 24px; border-left: 3px solid var(--neon); background: var(--slab); }
+.qa h3 { font: 700 17px var(--body); margin-bottom: 8px; }
+.qa p { margin: 0; color: var(--dust); font-size: 15px; }
+
+footer { padding: 40px 0 60px; border-top: 1px solid var(--seam); color: var(--dust); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 20px; justify-content: space-between; align-items: center; }
+
+@media (max-width: 960px) {
+  .hero .wrap, .faq { grid-template-columns: 1fr; }
+  .window { transform: none; }
+  .steps { grid-template-columns: 1fr; }
+  .features { grid-template-columns: 1fr 1fr; }
+  .flow { grid-template-columns: 1fr; }
+  .arrow { transform: rotate(90deg); justify-self: center; }
+  nav .links { display: none; }
+  nav .btn { margin-left: auto; }
+}
+@media (max-width: 520px) { .features { grid-template-columns: 1fr; } section { padding: 64px 0; } }
+@media (prefers-reduced-motion: reduce) { *, *::before { transition: none !important; } html { scroll-behavior: auto; } }
+.warn-box { margin-top: 22px; padding: 22px 26px; background: var(--slab); border: 1px solid var(--seam); border-left: 3px solid #f2b63c; }
+.warn-box h3 { font-size: 18px; margin: 0 0 8px; }
+.warn-box p { margin: 0 0 14px; color: var(--dust); }
+.warn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.warn-grid div { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid var(--seam); }
+.warn-grid span { color: var(--dust); }
+.warn-grid i { font-style: normal; color: #fff; font-weight: 600; }
+@media (max-width: 760px) { .warn-grid { grid-template-columns: 1fr; } }
+
+/* ---------- проверка VirusTotal ---------- */
+.vt { margin-top: 22px; display: grid; grid-template-columns: auto 1fr; gap: 30px; align-items: center; padding: 28px 30px;
+  background: linear-gradient(135deg, rgba(61, 220, 132, .08), transparent 55%), var(--slab); border: 1px solid var(--seam); border-left: 3px solid #3ddc84; }
+.vt-gauge { position: relative; width: 150px; height: 150px; flex: none; }
+.vt-gauge svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.vt-gauge circle { fill: none; stroke-width: 9; }
+.vt-gauge .track { stroke: var(--seam); }
+.vt-gauge .fill { stroke: #3ddc84; stroke-linecap: round; filter: drop-shadow(0 0 8px rgba(61, 220, 132, .55)); }
+.vt-gauge b { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; font: 900 46px/1 var(--display); color: #3ddc84; }
+.vt-gauge b small { display: block; margin-top: 4px; font: 600 15px var(--body); color: var(--dust); }
+.vt h3 { font-size: 22px; margin: 0 0 6px; }
+.vt h3 i { font-style: normal; color: #3ddc84; }
+.vt p { margin: 0 0 14px; color: var(--dust); }
+.vt-hash { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 0 0 16px; padding: 10px 14px; background: var(--void); border: 1px solid var(--seam); }
+.vt-hash code { font: 500 13px/1.45 var(--mono); color: var(--ink); word-break: break-all; }
+.vt-hash small { color: var(--dust); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+.vt-act { display: flex; flex-wrap: wrap; gap: 12px; }
+.vt-act .btn { padding: 12px 18px; font-size: 15px; }
+.vt-check { margin-top: 18px; padding-top: 18px; border-top: 1px dashed var(--seam); }
+.vt-check h4 { margin: 0 0 8px; font: 700 16px var(--body); }
+.vt-check ol { margin: 0; padding-left: 20px; color: var(--dust); display: grid; gap: 4px; }
+.vt-check kbd { font: 500 13px var(--mono); color: var(--ink); background: var(--void); border: 1px solid var(--seam); padding: 1px 6px; }
+.vt-note { margin: 14px 0 0; padding: 10px 14px; border: 1px solid rgba(242, 182, 60, .45); background: rgba(242, 182, 60, .08); color: #f4d28a; font-size: 14px; }
+.vt-note[hidden] { display: none; }
+@media (max-width: 760px) { .vt { grid-template-columns: 1fr; justify-items: start; padding: 22px 20px; } .vt-gauge { width: 120px; height: 120px; } .vt-gauge b { font-size: 36px; } }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="img/mark.png" alt="">Vault<span>MC</span></a>
+    <div class="links"><a href="#install">Установка</a><a href="#features">Возможности</a><a href="#screens">Скриншоты</a><a href="#rooms">Игра с друзьями</a><a href="#faq">Вопросы</a></div>
+    <a class="btn" href="VaultMC-Setup.exe" download>Скачать</a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <canvas id="field" aria-hidden="true"></canvas>
+  <div class="wrap">
+    <div>
+      <div class="tag"><i></i>VaultMC <span id="siteVer">6.4.13</span> · бесплатно</div>
+      <h1>Свой лаунчер <span>Minecraft</span></h1>
+      <ul class="withouts">
+        <li><s>лицензия</s> не нужна</li>
+        <li><s>Radmin</s> не нужен</li>
+        <li><s>лаги</s> — 1 кнопка</li>
+      </ul>
+      <div class="cta">
+        <a class="btn" href="VaultMC-Setup.exe" download>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"><path d="M12 3v12M6 10l6 6 6-6M4 21h16"/></svg>
+          Скачать для Windows
+        </a>
+        <a class="btn ghost" href="#install">Как установить</a>
+      </div>
+            <div class="meta">Windows 10 / 11 · установщик ≈ 9 МБ · всё нужное уже внутри</div>
+    </div>
+    <div class="window"><div class="bar"><i></i><i></i><i></i></div><img src="img/lobby.webp" alt="Главный экран VaultMC: скин игрока, выбранная сборка и кнопка «Играть»"></div>
+  </div>
+</header>
+
+<section id="install">
+  <div class="wrap">
+    <h2>Установка за 3 шага</h2>
+    <p class="lead">Обычный установщик, как у любой программы. Всё нужное уже внутри: ничего не нужно ставить заранее. Java для игры лаунчер скачает сам.</p>
+    <div class="steps">
+      <div class="step">
+        <h3>Скачай</h3>
+        <p>Нажми кнопку «Скачать». Сохранится файл VaultMC-Setup.exe.</p>
+        <div class="pic"><a class="btn" href="VaultMC-Setup.exe" download style="padding:12px 18px;font-size:15px">Скачать</a></div>
+      </div>
+      <div class="step">
+        <h3>Запусти</h3>
+        <p>Открой «Загрузки» и два раза нажми на <b>VaultMC-Setup.exe</b>.</p>
+        <div class="pic"><div class="file"><b></b>VaultMC-Setup.exe<span class="click">× 2 клика</span></div></div>
+      </div>
+      <div class="step">
+        <h3>Нажми «Установить»</h3>
+        <p>Нажми <b>«Далее»</b> → проверь галочку «Ярлык на рабочем столе» → <b>«Установить»</b> → <b>«Готово»</b>.</p>
+        <div class="pic"><div class="menu" style="width:220px"><div>Установка VaultMC</div><div class="on" style="text-align:center">Установить</div></div></div>
+      </div>
+    </div>
+    <div class="done"><img src="img/logo.png" alt=""><div><b>Готово — ярлык VaultMC на рабочем столе</b><span>Лаунчер откроется сам. Ещё он появится в меню «Пуск» и в «Приложениях» — оттуда же удаляется.</span></div></div>
+    <div class="warn-box">
+      <h3>Браузер или Windows предупреждают о файле?</h3>
+      <p>Это нормально для новых программ: у VaultMC пока нет платной цифровой подписи, и файл ещё редко скачивали. Вирусов в нём нет — предупреждение пропадёт само, когда лаунчер станет популярнее.</p>
+      <div class="warn-grid">
+        <div><b>Chrome / Edge</b><span>Нажми <i>«Скачать подозрительный файл»</i> или в списке загрузок <i>«Сохранить»</i>.</span></div>
+        <div><b>Окно «Windows защитила ваш компьютер»</b><span>Нажми <i>«Подробнее»</i> → <i>«Выполнить в любом случае»</i>.</span></div>
+      </div>
+    </div>
+    <div class="vt" id="vt" data-sha="b8c4f0c398a24f049e19e793ffce5def2404349accc852b5d586484aba9e619d">
+      <div class="vt-gauge" aria-hidden="true">
+        <svg viewBox="0 0 120 120"><circle class="track" cx="60" cy="60" r="52"/><circle class="fill" cx="60" cy="60" r="52" stroke-dasharray="326.7" stroke-dashoffset="0"/></svg>
+        <b>0<small>из 70</small></b>
+      </div>
+      <div>
+        <h3>Проверено на вирусы: <i>0 из 70</i></h3>
+        <p>Установщик загрузили на VirusTotal: ни один из 70 антивирусов и сервисов безопасности не отметил файл как вредоносный. Лаунчер бесплатный, всё нужное уже внутри, ничего лишнего не ставится.</p>
+        <div class="vt-hash"><small>SHA-256</small><code>b8c4f0c398a24f049e19e793ffce5def2404349accc852b5d586484aba9e619d</code></div>
+        <div class="vt-act">
+          <a class="btn" href="https://www.virustotal.com/gui/file/b8c4f0c398a24f049e19e793ffce5def2404349accc852b5d586484aba9e619d" target="_blank" rel="noopener">Открыть отчёт VirusTotal</a>
+          <button class="btn ghost" type="button" id="vtCopy">Скопировать команду проверки</button>
+        </div>
+        <p class="vt-note" id="vtNote" hidden>Установщик обновился после этой проверки, ссылка выше ведёт на отчёт по предыдущей сборке. Проверь свежий файл так же, как описано ниже: хэш должен совпасть с тем, что покажет команда.</p>
+        <div class="vt-check">
+          <h4>Не веришь? Проверь сам</h4>
+          <ol>
+            <li>Скачай <b>VaultMC-Setup.exe</b> с этой страницы.</li>
+            <li>Открой PowerShell и выполни: <kbd>Get-FileHash $env:USERPROFILE\Downloads\VaultMC-Setup.exe</kbd></li>
+            <li>Сравни хэш с тем, что выше. Совпал — это тот самый проверенный файл.</li>
+            <li>Или загрузи файл на <a href="https://www.virustotal.com/" target="_blank" rel="noopener">virustotal.com</a> и посмотри результат своими глазами.</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <h2>Что внутри</h2>
+    <p class="lead">Всё, что обычно ставят отдельными программами, собрано в одном окне.</p>
+    <div class="features">
+      <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><h3>Два вида аккаунтов</h3><p>Оффлайн-ник с паролем или Ely.by со скинами. Можно держать несколько и переключаться в один клик.</p></div>
+      <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10"/></svg><h3>Сборки</h3><p>У каждой своя папка: моды, миры и настройки не смешиваются. Экспорт и импорт в форматах Modrinth (.mrpack) и CurseForge (.zip).</p></div>
+      <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><h3>Моды из Modrinth и CurseForge</h3><p>Моды, ресурспаки, шейдеры и готовые сборки — обе площадки работают сразу, без ключей и настроек. Отметь галочками и скачай пачкой.</p></div>
+      <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg><h3>Больше FPS</h3><p>Sodium, Lithium, FerriteCore и ещё 3 мода одной кнопкой, пресеты графики, приоритет игры и мощная видеокарта.</p></div>
+      <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg><h3>Комнаты и прямое подключение</h3><p>Открой мир друзьям через интернет — без Radmin, Hamachi и проброса портов. Друг из списка заходит напрямую, а если провайдер не пускает — через e4mc.</p></div>
+      <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6"/></svg><h3>Друзья в сети</h3><p>Видно, кто в сети и во что играет. Открыл друг мир — жми «Зайти»: лаунчер подберёт сборку и подключит.</p></div>
+      <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16"/><path d="M3 9h18M8 4v5"/></svg><h3>Все версии и загрузчики</h3><p>Релизы, снапшоты, бета и альфа — с фильтрами и поиском. Vanilla, Fabric, Forge и NeoForge.</p></div>
+      <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.01"/></svg><h3>Разбор вылетов</h3><p>Игра упала — лаунчер по-русски объяснит почему: не хватает мода, мало памяти, не та Java — и починит в один клик.</p></div>
+      <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/></svg><h3>Миры, серверы, скриншоты</h3><p>Резервные копии миров и перенос между сборками, список серверов с онлайном и пингом, галерея скриншотов.</p></div>
+      <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3"/><path d="M18 3v4h-4M6 21v-4h4"/></svg><h3>Обновления модов</h3><p>Лаунчер находит новые версии модов на Modrinth и CurseForge и обновляет их одной кнопкой.</p></div>
+      <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 15l5-4 4 3 3-2 6 4"/></svg><h3>Свой фон и English</h3><p>Своя картинка на главном экране, цвет интерфейса и английский язык.</p></div>
+      <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l5 5 9-10"/></svg><h3>Мастерская скинов</h3><p>Рисуй скин по пикселям, плащи, аксессуары и 24 своих образа. 3D-просмотр: крути персонажа мышью. Скин видят все, кто играет вместе через VaultMC с модами.</p></div>
+      <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h10M4 17h7"/><rect x="15" y="13" width="6" height="6" rx="1"/></svg><h3>Сборка по коду</h3><p>Поделись сборкой кодом из 6 символов — друг получит ту же версию, загрузчик, моды и настройки.</p></div>
+      <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg><h3>Проверка модов до запуска</h3><p>Не тот загрузчик или версия, мод лежит дважды, не хватает зависимости — лаунчер покажет и исправит до того, как игра упадёт.</p></div>
+      <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg><h3>Автонастройка под ПК</h3><p>Лаунчер смотрит память, процессор и видеокарту и подбирает память для игры, графику и моды оптимизации.</p></div>
+      <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg><h3>Быстрая загрузка</h3><p>Файлы игры и моды качаются параллельно, с запасными ссылками и проверкой контрольных сумм. Скорость видна в прогрессе.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="screens">
+  <div class="wrap">
+    <h2>Как это выглядит</h2>
+    <div class="tabs" role="tablist" id="tabs">
+      <button role="tab" aria-selected="true" data-shot="lobby">Лобби</button>
+      <button role="tab" aria-selected="false" data-shot="skins">Скины</button>
+      <button role="tab" aria-selected="false" data-shot="skincat">Каталог скинов</button>
+      <button role="tab" aria-selected="false" data-shot="friends">Друзья</button>
+      <button role="tab" aria-selected="false" data-shot="catalog">Каталог модов</button>
+      <button role="tab" aria-selected="false" data-shot="forge">Forge</button>
+      <button role="tab" aria-selected="false" data-shot="instance">Сборка</button>
+      <button role="tab" aria-selected="false" data-shot="worlds">Миры</button>
+      <button role="tab" aria-selected="false" data-shot="servers">Серверы</button>
+      <button role="tab" aria-selected="false" data-shot="crash">Вылет</button>
+      <button role="tab" aria-selected="false" data-shot="rooms">Комнаты</button>
+      <button role="tab" aria-selected="false" data-shot="settings">Настройки</button>
+      <button role="tab" aria-selected="false" data-shot="auth">Вход</button>
+    </div>
+    <figure class="shot" style="margin:0"><img id="shotImg" src="img/lobby.webp" alt="Лобби лаунчера"><p id="shotText">Главный экран VaultMC: сборка крупно, большая кнопка «Играть», твой персонаж на подставке и полка сборок.</p></figure>
+  </div>
+</section>
+
+<section id="rooms">
+  <div class="wrap">
+    <h2>Игра с друзьями без Radmin</h2>
+    <p class="lead">Лаунчер ставит в твою сборку моды <code>e4mc</code> и <code>LAN World Plug-n-Play</code> (Fabric, Forge или NeoForge). Мир получает публичный адрес, и друзья заходят по нему из любой точки мира. Друзья из списка VaultMC подключаются ещё и напрямую — без сервера-посредника; если провайдер этого не позволяет, лаунчер сам зайдёт через e4mc. Лицензия не нужна никому — достаточно выключить онлайн-режим.</p>
+    <div class="flow">
+      <div class="node"><small>ТЫ</small><h3>«Создать комнату»</h3><p>Лаунчер ставит мод и запускает игру.</p></div>
+      <div class="arrow">→</div>
+      <div class="node"><small>В ИГРЕ</small><h3>Esc → «Открыть для сети»</h3><p>Выключи онлайн-режим и нажми «Открыть». Появится адрес вроде <code>brave-fox.eu.e4mc.link</code>. Лаунчер скопирует его сам.</p></div>
+      <div class="arrow">→</div>
+      <div class="node"><small>ДРУГ</small><h3>«Войти по адресу»</h3><p>Вставляет адрес, игра запускается и сразу подключается.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <h2>Вопросы</h2>
+    <div class="faq">
+      <div class="qa"><h3>Нужна ли лицензия Minecraft?</h3><p>Нет. Оффлайн-аккаунты и Ely.by работают без неё: игра, моды, сборки и комнаты.</p></div>
+      <div class="qa"><h3>Сколько стоит?</h3><p>Бесплатно. Весь код лежит в архиве открыто, его можно прочитать и поменять.</p></div>
+      <div class="qa"><h3>Друзья увидят мой скин?</h3><p>Да, если вы оба играете через VaultMC в сборке с Fabric, Forge или NeoForge: лаунчер сам ставит мод CustomSkinLoader и берёт скины с сервера VaultMC. В сборке без модов чужие скины игра не показывает.</p></div>
+      <div class="qa"><h3>Почему друг иногда заходит через e4mc, а не напрямую?</h3><p>У части провайдеров (чаще всего мобильный интернет) строгий NAT — прямое соединение между двумя компьютерами не получается. Тогда лаунчер сам заходит через туннель e4mc, ничего настраивать не нужно.</p></div>
+      <div class="qa"><h3>Нужно ли ставить Java?</h3><p>Нет. Лаунчер сам скачает ту версию Java, которая нужна выбранной версии игры, — как официальный лаунчер.</p></div>
+      <div class="qa"><h3>Куда сохраняются миры и моды?</h3><p>В папку <code>%USERPROFILE%\.vaultmc</code>. Каждая сборка лежит в своей подпапке, и при переустановке лаунчера ничего не пропадёт.</p></div>
+      <div class="qa"><h3>Что-то не запускается</h3><p>Открой папку <code>%LOCALAPPDATA%\Programs\VaultMC\app</code> и запусти <b>debug.bat</b>: он покажет ошибку. Журнал запуска лежит в <code>.vaultmc\launcher.log</code>.</p></div>
+      <div class="qa"><h3>Как удалить?</h3><p>Параметры Windows → «Приложения» → VaultMC → «Удалить». Миры и сборки останутся в папке <code>.vaultmc</code> — удаляй её, только если они точно не нужны.</p></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="img/mark.png" alt="">Vault<span>MC</span></a>
+    <span>VaultMC — неофициальный проект, он не связан с Mojang Studios и Microsoft. Minecraft — товарный знак Mojang AB.</span>
+  </div>
+</footer>
+
+<script>
+/* ---------- живое поле изометрических блоков ---------- */
+(() => {
+  const canvas = document.getElementById('field');
+  const ctx = canvas.getContext('2d');
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let w, h, dpr, cells = [], mouse = { x: -999, y: -999 };
+  const S = 26; // размер блока
+  function resize() {
+    dpr = Math.min(devicePixelRatio || 1, 2);
+    w = canvas.clientWidth; h = canvas.clientHeight;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cells = [];
+    const cw = S * 1.732, ch = S;
+    for (let r = -2; r < h / ch + 4; r++) for (let c = -2; c < w / cw + 2; c++) {
+      cells.push({ x: c * cw + (r % 2 ? cw / 2 : 0), y: r * ch, seed: Math.random() * 6.28, gold: Math.random() < .07 });
+    }
+  }
+  function cube(x, y, lift, glow, gold) {
+    const k = S * .866, t = y - lift;
+    const a = 0.08 + glow * 0.9;
+    ctx.fillStyle = gold ? `rgba(250,205,100,${a})` : `rgba(120,232,245,${a})`;            // верх
+    ctx.beginPath(); ctx.moveTo(x, t - S / 2); ctx.lineTo(x + k, t); ctx.lineTo(x, t + S / 2); ctx.lineTo(x - k, t); ctx.fill();
+    ctx.fillStyle = gold ? `rgba(210,150,40,${a * .8})` : `rgba(40,175,200,${a * .8})`;          // левый бок
+    ctx.beginPath(); ctx.moveTo(x - k, t); ctx.lineTo(x, t + S / 2); ctx.lineTo(x, t + S / 2 + lift * .5 + 6); ctx.lineTo(x - k, t + lift * .5 + 6); ctx.fill();
+    ctx.fillStyle = gold ? `rgba(140,95,20,${a * .8})` : `rgba(15,100,125,${a * .8})`;          // правый бок
+    ctx.beginPath(); ctx.moveTo(x + k, t); ctx.lineTo(x, t + S / 2); ctx.lineTo(x, t + S / 2 + lift * .5 + 6); ctx.lineTo(x + k, t + lift * .5 + 6); ctx.fill();
+  }
+  function frame(time) {
+    ctx.clearRect(0, 0, w, h);
+    const tt = time / 1000;
+    for (const c of cells) {
+      const wave = (Math.sin(c.x * .012 + c.y * .018 - tt * 1.4 + c.seed * .15) + 1) / 2;
+      const d = Math.hypot(c.x - mouse.x, c.y - mouse.y);
+      const near = Math.max(0, 1 - d / 220);
+      const glow = Math.min(1, wave * wave * .35 + near * .8) * Math.min(1, c.x / (w * .55));
+      if (glow < .03) continue;
+      cube(c.x, c.y, glow * 18, glow, c.gold);
+    }
+    if (!still) requestAnimationFrame(frame);
+  }
+  addEventListener('resize', resize);
+  canvas.parentElement.addEventListener('pointermove', (e) => { const r = canvas.getBoundingClientRect(); mouse = { x: e.clientX - r.left, y: e.clientY - r.top }; });
+  canvas.parentElement.addEventListener('pointerleave', () => (mouse = { x: -999, y: -999 }));
+  resize(); requestAnimationFrame(frame);
+})();
+
+/* ---------- скриншоты ---------- */
+const SHOTS = {
+  lobby: 'Главный экран VaultMC: сборка крупно, большая кнопка «Играть», твой персонаж на подставке и полка сборок.',
+  skins: 'Мастерская скинов: 3D-персонаж крутится мышью и ходит; кисть, заливка, пипетка, слой одежды, плащи и аксессуары. «Сохранить» — и скин видят друзья в игре.',
+  skincat: 'Каталог скинов: 24 образа VaultMC, скин с Ely.by по нику, по ссылке или из файла.',
+  friends: 'Друзья: кто в сети и во что играет. Открыт мир — кнопка «Зайти» подключает напрямую или через e4mc.',
+  catalog: 'Каталог: Modrinth или CurseForge, моды, ресурспаки, шейдеры и сборки. Галочки — установка пачкой.',
+  instance: 'Сборка: автонастройка под ПК, оптимизация в 1 клик, моды и их обновления, экспорт и код для друга.',
+  forge: 'Новая сборка: Vanilla, Fabric, Forge или NeoForge — и выбор версии загрузчика.',
+  worlds: 'Миры: резервные копии, восстановление и перенос мира в другую сборку.',
+  servers: 'Серверы: онлайн, пинг и описание, «Играть» сразу подключает к серверу.',
+  crash: 'Игра вылетела — лаунчер объясняет причину и чинит в один клик.',
+  rooms: 'Комнаты: создать комнату для друзей или войти по адресу друга.',
+  settings: 'Настройки: память, производительность, Java, язык, свой фон, цвет интерфейса.',
+  auth: 'Вход: оффлайн-аккаунт с паролем или Ely.by.',
+};
+document.getElementById('tabs').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-shot]'); if (!b) return;
+  document.querySelectorAll('#tabs button').forEach((x) => x.setAttribute('aria-selected', x === b));
+  const img = document.getElementById('shotImg');
+  img.src = `img/${b.dataset.shot}.webp`; img.alt = b.textContent;
+  document.getElementById('shotText').textContent = SHOTS[b.dataset.shot];
+});
+
+</script>
+<script>
+(() => {
+  const box = document.getElementById('vt'); if (!box) return;
+  const scanned = box.dataset.sha.toLowerCase();
+  fetch('version.json', { cache: 'no-store' }).then((r) => r.json()).then((j) => {
+    if (j && j.sha256 && String(j.sha256).toLowerCase() !== scanned) document.getElementById('vtNote').hidden = false;
+  }).catch(() => {});
+  const btn = document.getElementById('vtCopy');
+  btn.onclick = () => {
+    const cmd = 'Get-FileHash $env:USERPROFILE\\Downloads\\VaultMC-Setup.exe';
+    const done = () => { btn.textContent = 'Скопировано'; setTimeout(() => { btn.textContent = 'Скопировать команду проверки'; }, 1800); };
+    (navigator.clipboard ? navigator.clipboard.writeText(cmd) : Promise.reject()).then(done).catch(() => {
+      const t = document.createElement('textarea'); t.value = cmd; document.body.append(t); t.select();
+      try { document.execCommand('copy'); done(); } catch (e) { /* без буфера: команду видно в списке выше */ }
+      t.remove();
+    });
+  };
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+build/
+dist/
+releases/
+.venv/
+*.log
+
+# Секреты и данные, которые не должны попасть в репозиторий
+core/keys.py
+accounts.json
+config.json
+saves/
+*.zip

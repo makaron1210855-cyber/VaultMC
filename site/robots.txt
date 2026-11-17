@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://vaultmc.vaultmc.workers.dev/sitemap.xml
