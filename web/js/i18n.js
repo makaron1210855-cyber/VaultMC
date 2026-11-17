@@ -1461,6 +1461,23 @@ const I18N_EN = {
 "Скорость скачивания": "Download speed",
 "Всё в порядке: нужные сайты открываются быстро.": "All good: the sites you need open quickly.",
 "Интернета нет или всё блокируется: проверьте подключение, прокси, файрвол и антивирус.": "No internet or everything is blocked: check your connection, proxy, firewall and antivirus.",
+// 6.4.20: блокировка игроков, «был в сети», уведомления Windows
+"Заблокировать": "Block",
+"Заблокировать игрока?": "Block this player?",
+" не сможет присылать вам заявки и подключаться к вашим комнатам, а ваш статус ему показываться не будет. Из друзей он пропадёт у вас обоих. Он не узнает, что вы его заблокировали. Разблокировать можно внизу списка друзей.": " won't be able to send you requests or join your rooms, and won't see your status. They'll disappear from both friend lists. They won't know you blocked them. You can unblock at the bottom of the friends list.",
+" заблокирован": " blocked",
+"Заблокированные": "Blocked",
+"заблокирован — не видит ваш статус и не может писать": "blocked — can't see your status or contact you",
+"Разблокировать": "Unblock",
+"был в сети ": "last seen ",
+"Уведомления Windows о друзьях": "Windows notifications about friends",
+"Когда лаунчер свёрнут: «Ник хочет в друзья» и «Ник открыл мир». Во время игры не показываются; свёрнутый лаунчер раз в 3 минуты спрашивает сервер": "When the launcher is minimized: «X wants to be friends» and «X opened a world». Not shown during a game; a minimized launcher asks the server every 3 minutes",
+"Сначала разблокируйте этого игрока": "Unblock this player first",
+"Вы заблокировали ": "You blocked ",
+"Слишком много заявок за сутки. Попробуйте завтра": "Too many requests today. Try again tomorrow",
+"Слишком много заблокированных игроков": "Too many blocked players",
+"Слишком много блокировок за сутки. Попробуйте завтра": "Too many blocks today. Try again tomorrow",
+" сейчас не принимает подключения": " isn't accepting connections right now",
 };
 
 const I18N = {

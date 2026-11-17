@@ -476,7 +476,10 @@ def main() -> None:
     # ссылка на сборку с сайта (pack.html → «Открыть в VaultMC»): vaultmc://pack/K7XQ2M
     import re
     link = next((m for m in (re.match(r"(?i)^vaultmc://pack/([a-z0-9]{6})/?$", a) for a in sys.argv[1:]) if m), None)
-    open_value = os.path.abspath(pack_arg) if pack_arg else f"code:{link.group(1).upper()}" if link else ""
+    # нажали на окошко Windows о друге: vaultmc://friends — окно поднимется на вкладку «Друзья»
+    friends_link = any(re.match(r"(?i)^vaultmc://friends/?$", a) for a in sys.argv[1:])
+    open_value = os.path.abspath(pack_arg) if pack_arg else f"code:{link.group(1).upper()}" if link \
+        else "page:friends" if friends_link else ""
     if open_value:
         from core.utils import LAUNCHER_HOME
         try:

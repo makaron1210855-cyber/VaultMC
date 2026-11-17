@@ -404,11 +404,19 @@ class Api:
         code = re.sub(r"[^A-Za-z0-9]", "", code or "").upper()
         if len(code) != 6:
             return {"error": "Код комнаты — 6 букв и цифр, например K7XQ2M"}
+        acc = self._accounts.active
         try:
-            data = skinserver.get_room(code)
+            if acc and acc.kind in ("offline", "elyby"):
+                try:    # от имени игрока: заблокировавший вас хозяин для вас «комнату закрыл»
+                    data = skinserver.lookup_room(acc.username, code)
+                except skinserver.SkinServerError as exc:
+                    if exc.status == 404 or exc.code == "gone":
+                        raise
+                    data = skinserver.get_room(code)    # старый сервер или сбой — как раньше, без имени
+            else:
+                data = skinserver.get_room(code)
         except Exception as exc:  # noqa: BLE001
             return {"error": str(exc)}
-        acc = self._accounts.active
         if acc and data.get("host", "").lower() == acc.username.lower():
             return {"error": "Это код вашей собственной комнаты"}
         return {"ok": True, "code": code, "host": data.get("host", ""), "info": data.get("info") or {}}
@@ -1567,6 +1575,27 @@ class Api:
         except Exception as exc:  # noqa: BLE001
             return {"error": str(exc)}
 
+    def system_notify(self, key: str, title: str, text: str) -> dict:
+        """Окошко Windows «Ник хочет в друзья» / «Ник открыл мир», когда лаунчер не на виду (core/winnotify.py).
+        Не вышло показать — мигает значок на панели задач. Одно и то же уведомление не чаще раза в 10 минут."""
+        if not self._cfg.win_notify:
+            return {"skipped": "off"}
+        now = time.time()
+        sent = self.__dict__.setdefault("_notified", {})
+        if now - sent.get(str(key), 0) < 600:
+            return {"skipped": "duplicate"}
+        sent[str(key)] = now
+
+        def job():
+            from core import winnotify
+            from core.utils import resource_path
+            result = winnotify.toast(str(title)[:120], str(text)[:240], "vaultmc://friends", str(resource_path("assets/logo_win.ico")))
+            if result != "shown":
+                _log(f"окошко Windows не показано ({result}) — мигаю значком")
+                winnotify.flash_window(APP_NAME)
+        threading.Thread(target=job, daemon=True).start()
+        return {"ok": True}
+
     # ================================================================= прямое подключение (P2P)
     def _p2p_host_start(self, port: int) -> None:
         """Мир открыт для сети — принимаем прямые подключения друзей (если сервер VaultMC доступен)."""
@@ -1768,6 +1797,8 @@ class Api:
         code = re.fullmatch(r"code:([A-Z0-9]{6})", path or "")
         if code:                       # ссылка на сборку с сайта — окно покажет «Сборка по коду» с этим кодом
             return {"code": code.group(1)}
+        if path == "page:friends":     # нажали на окошко Windows о друге (vaultmc://friends)
+            return {"page": "friends"}
         if not path or not Path(path).is_file():
             return {}
         return self.import_file(path)

@@ -66,7 +66,9 @@ function friendsDiff(prev, cur) {
     OF.seenReq.add(n);
     notice('req:' + n, { name: n, title: `<span class="no-tr">${esc(n)}</span> хочет добавить вас в друзья`,
       actions: [{ label: 'Принять', primary: true, icon: 'check', run: () => friendAction('accept', n) },
-        { label: 'Отклонить', run: () => friendAction('decline', n) }] });
+        { label: 'Отклонить', run: () => friendAction('decline', n) },
+        { label: 'Заблокировать', icon: 'lock', run: () => blockPlayer(n) }] });
+    sysNotify('req:' + n, `${n} хочет добавить вас в друзья`, 'Откройте VaultMC, чтобы принять или отклонить заявку');
   }
   [...OF.seenReq].forEach((n) => { if (!cur.incoming.includes(n)) { OF.seenReq.delete(n); noticeClose('req:' + n); } });
   for (const n of cur.friends) {
@@ -78,8 +80,25 @@ function friendsDiff(prev, cur) {
       text: `${st[n].instance ? `«<span class="no-tr">${esc(st[n].instance)}</span>»` : 'Minecraft'}${st[n].version ? ` · ${esc(st[n].version)}` : ''}`,
       actions: [{ label: 'Зайти', primary: true, icon: 'play', run: () => joinFriend(n, ((OF.data || {}).status || {})[n] || st[n]) },
         { label: 'Не сейчас', run: () => {} }] });
+    sysNotify('open:' + n, `${n} открыл мир`, `${st[n].instance || 'Minecraft'}${st[n].version ? ' · ' + st[n].version : ''} — нажмите, чтобы зайти`);
   }
   if (prev) cur.friends.forEach((n) => { if (prev.outgoing.includes(n)) toast(`${n} принял вашу заявку — вы друзья`, 'info', 7000); });
+}
+
+/** Окошко Windows о друге — только когда лаунчер не на виду (на виду хватает окошка внутри лаунчера). */
+function sysNotify(key, title, text) {
+  if (!S.config.win_notify || (document.hasFocus() && !document.hidden)) return;
+  api.system_notify(key, title, text).catch(() => {});
+}
+
+/** Заблокировать игрока: дружба и заявки пропадают, он не увидит, что его заблокировали. */
+async function blockPlayer(n) {
+  if (!await confirmDialog('Заблокировать игрока?',
+    `${n} не сможет присылать вам заявки и подключаться к вашим комнатам, а ваш статус ему показываться не будет. Из друзей он пропадёт у вас обоих. Он не узнает, что вы его заблокировали. Разблокировать можно внизу списка друзей.`,
+    'Заблокировать', true)) return null;
+  const res = await friendAction('block', n);
+  if (res) toast(`${n} заблокирован`);
+  return res;
 }
 
 /** Спросить сервер. quiet — фоновый опрос: ошибки связи не показываем, старый список остаётся на экране. */
@@ -125,7 +144,8 @@ function friendsRepaint(force = false) {
   friendsChrome();
   const box = FR.el && FR.el.isConnected ? $('#frList', FR.el) : null;
   if (!box) return;
-  const sig = JSON.stringify([OF.error, OF.data && [OF.data.friends, OF.data.incoming, OF.data.outgoing,
+  const sig = JSON.stringify([OF.error, OF.data && [OF.data.friends, OF.data.incoming, OF.data.outgoing, OF.data.blocked,
+    Object.entries(OF.data.seen || {}).map(([n, t]) => [n, Math.floor(t / 600000)]),
     Object.entries(OF.data.status || {}).map(([n, s]) => [n, s.state, s.instance, s.version, s.room, s.p2p])], S.friends, !!S.account]);
   if (!force && sig === OF.sig && box.childElementCount) return;
   OF.sig = sig;
@@ -139,7 +159,8 @@ async function friendAction(action, name) {
   if (!res) return null;
   if (res.error === 'no_server') { toast('Сервер VaultMC не настроен', 'error'); return null; }
   if (res.error) { toast(res.error, 'error', 9000); return null; }
-  OF.data = { ...(OF.data || {}), friends: res.friends, incoming: res.incoming, outgoing: res.outgoing, status: (OF.data || {}).status || {} };
+  OF.data = { ...(OF.data || {}), friends: res.friends, incoming: res.incoming, outgoing: res.outgoing, blocked: res.blocked || [],
+    status: (OF.data || {}).status || {}, seen: (OF.data || {}).seen || {} };
   if (action === 'accept') { toast(`${name} теперь ваш друг`); friendsFetch(true); }
   noticeClose('req:' + name);
   friendsRepaint();
@@ -162,8 +183,10 @@ async function sendFriendRequest(nick) {
 /** Фоновый опрос: раз в минуту, пока лаунчер на виду. Во время игры в свёрнутом лаунчере сервер не дёргаем. */
 function friendsPollStart() {
   const tick = () => {
-    if (!S.account || document.hidden) return;
-    if (S.state !== 'idle' && !document.hasFocus()) return;
+    if (!S.account) return;
+    if (!document.hidden && document.hasFocus()) return friendsFetch(true);   // на виду — раз в минуту
+    // свёрнут или в другом окне: чтобы прислать окошко Windows, спрашиваем реже (раз в 3 минуты) и не во время игры
+    if (S.state !== 'idle' || !S.config.win_notify || Date.now() - OF.at < 170000) return;
     friendsFetch(true);
   };
   setInterval(tick, 60000);
@@ -190,12 +213,15 @@ function friendsListHtml() {
   const d = OF.data, st = d.status || {};
   const known = new Set([...d.friends, ...d.incoming, ...d.outgoing].map((n) => n.toLowerCase()));
   const local = (S.friends || []).filter((f) => !known.has(f.name.toLowerCase()));
-  const x = (title, act = 'remove') => `<button class="btn sm ghost icon fr-x" data-f="${act}" title="${title}">${ic('trash')}</button>`;
+  const x = (title, act = 'remove') => `<button class="btn sm ghost icon fr-x" data-f="${act}" title="${title}">${ic('trash')}</button>`
+    + (act === 'remove' ? `<button class="btn sm ghost icon fr-x" data-f="block" title="Заблокировать">${ic('lock')}</button>` : '');
+  const seenAt = (n) => ((d.seen || {})[n] ? `был в сети ${fmtWhen(d.seen[n] / 1000)}` : 'не в сети');
   let out = '';
   if (d.incoming.length) {
     out += `<div class="fr-sec">Хотят добавить вас <span class="count">${d.incoming.length}</span></div><div class="fr-rows">`
       + d.incoming.map((n) => frRow(n, 'req', 'хочет добавить вас в друзья',
-        `<button class="btn sm primary" data-f="accept">${ic('check')} Принять</button><button class="btn sm ghost" data-f="decline">Отклонить</button>`)).join('') + '</div>';
+        `<button class="btn sm primary" data-f="accept">${ic('check')} Принять</button><button class="btn sm ghost" data-f="decline">Отклонить</button>`
+        + `<button class="btn sm ghost icon fr-x" data-f="block" title="Заблокировать">${ic('lock')}</button>`)).join('') + '</div>';
   }
   const total = d.friends.length;
   const online = d.friends.filter((n) => st[n]).length;
@@ -214,12 +240,17 @@ function friendsListHtml() {
     if (isOpenWorld(s)) return frRow(n, 'open', `<b>открыл мир</b> ${where}`, `<button class="btn primary" data-f="join">${ic('play')} Зайти</button>${x('Убрать из друзей')}`);
     if (s && s.state === 'playing') return frRow(n, 'play', `играет ${where}`, x('Убрать из друзей'));
     if (s) return frRow(n, 'on', 'в сети', x('Убрать из друзей'));
-    return frRow(n, 'off', 'не в сети', x('Убрать из друзей'));
+    return frRow(n, 'off', seenAt(n), x('Убрать из друзей'));
   }).join('')
     + d.outgoing.map((n) => frRow(n, 'wait', 'заявка отправлена — ждём, когда друг нажмёт «Принять»',
       `<button class="btn sm ghost" data-f="decline">Отменить</button>`)).join('')
     + local.map((f) => frRow(f.name, 'local', 'добавлен по-старому (по коду) — друг вас не видит',
       `<button class="btn sm" data-f="invite">${ic('plus')} Отправить заявку</button>${x('Убрать', 'rmlocal')}`)).join('') + '</div>';
+  if ((d.blocked || []).length) {
+    out += `<details class="fr-more" style="margin-top:12px"><summary>Заблокированные <span class="count">${d.blocked.length}</span></summary><div class="fr-rows">`
+      + d.blocked.map((n) => frRow(n, 'off', 'заблокирован — не видит ваш статус и не может писать',
+        `<button class="btn sm" data-f="unblock">Разблокировать</button>`)).join('') + '</div></details>';
+  }
   return out;
 }
 
@@ -358,6 +389,7 @@ registerPage('friends', {
         if (a === 'join') return joinFriend(n, ((OF.data || {}).status || {})[n]);
         if (a === 'rmlocal') { S.friends = await api.friend_remove(n); return friendsRepaint(); }
         if (a === 'remove' && !await confirmDialog('Убрать из друзей?', `${n} пропадёт из списка у вас обоих.`, 'Убрать', true)) return;
+        if (a === 'block') return blockPlayer(n);
         f.disabled = true;
         if (a === 'invite') await sendFriendRequest(n); else await friendAction(a, n);
         if (f.isConnected) f.disabled = false;

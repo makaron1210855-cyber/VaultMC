@@ -349,6 +349,153 @@ test('смена ника: друг ещё со старого сервера (K
   assert.deepEqual(legacy.data.friends, ['New_Nick']);
 });
 
+/* ---------------------------------------------------------------- блокировка, лимит заявок, «был в сети» */
+const fr = (e, who, token, action, other, ip) => post(e, '/api/friends', { ...as(who, token), action, other }, ip);
+
+async function twoPlayers() {
+  const e = env();
+  await reg(e, 'Alice', TOKEN_A);
+  await reg(e, 'Bob_2', TOKEN_B);
+  return e;
+}
+
+test('блокировка: убирает дружбу в обе стороны, блокирующий видит список', async () => {
+  const e = await twoPlayers();
+  await fr(e, 'Alice', TOKEN_A, 'request', 'Bob_2');
+  await fr(e, 'Bob_2', TOKEN_B, 'accept', 'Alice');
+  const r = await fr(e, 'Alice', TOKEN_A, 'block', 'bob_2');
+  assert.deepEqual([r.data.friends, r.data.blocked], [[], ['Bob_2']]);
+  const bob = await fr(e, 'Bob_2', TOKEN_B, 'list', undefined);
+  assert.deepEqual(bob.data.friends, [], 'у заблокированного дружба тоже пропала');
+  assert.deepEqual(bob.data.blocked, [], 'и он не видит, что его заблокировали');
+});
+
+test('заявка от заблокированного выглядит отправленной, но не доходит', async () => {
+  const e = await twoPlayers();
+  await fr(e, 'Alice', TOKEN_A, 'block', 'Bob_2');
+  const sent = await fr(e, 'Bob_2', TOKEN_B, 'request', 'Alice');
+  assert.equal(sent.status, 200);
+  assert.deepEqual(sent.data.outgoing, ['Alice'], 'Бобу кажется, что заявка ушла');
+  const alice = await fr(e, 'Alice', TOKEN_A, 'list', undefined);
+  assert.deepEqual(alice.data.incoming, [], 'Алисе заявка не пришла');
+});
+
+test('блокирующий не может звать заблокированного, пока не разблокирует', async () => {
+  const e = await twoPlayers();
+  await fr(e, 'Alice', TOKEN_A, 'block', 'Bob_2');
+  const r = await fr(e, 'Alice', TOKEN_A, 'request', 'Bob_2');
+  assert.equal(r.status, 400);
+  assert.equal(r.data.code, 'blocked');
+  await fr(e, 'Alice', TOKEN_A, 'unblock', 'Bob_2');
+  assert.equal((await fr(e, 'Alice', TOKEN_A, 'request', 'Bob_2')).status, 200);
+  const bob = await fr(e, 'Bob_2', TOKEN_B, 'list', undefined);
+  assert.deepEqual(bob.data.incoming, ['Alice']);
+});
+
+test('decline и remove не снимают блокировку (ни свою, ни чужую)', async () => {
+  const e = await twoPlayers();
+  await fr(e, 'Alice', TOKEN_A, 'block', 'Bob_2');
+  await fr(e, 'Bob_2', TOKEN_B, 'remove', 'Alice');
+  await fr(e, 'Bob_2', TOKEN_B, 'decline', 'Alice');
+  assert.deepEqual((await fr(e, 'Alice', TOKEN_A, 'list', undefined)).data.blocked, ['Bob_2'], 'блок Алисы на месте');
+  await fr(e, 'Alice', TOKEN_A, 'remove', 'Bob_2');
+  assert.deepEqual((await fr(e, 'Alice', TOKEN_A, 'list', undefined)).data.blocked, ['Bob_2'], 'remove не разблокирует');
+});
+
+test('взаимная блокировка: каждый снимает только свою', async () => {
+  const e = await twoPlayers();
+  await fr(e, 'Alice', TOKEN_A, 'block', 'Bob_2');
+  await fr(e, 'Bob_2', TOKEN_B, 'block', 'Alice');
+  await fr(e, 'Alice', TOKEN_A, 'unblock', 'Bob_2');
+  const r = await fr(e, 'Alice', TOKEN_A, 'request', 'Bob_2');
+  assert.equal(r.status, 200);
+  assert.deepEqual((await fr(e, 'Bob_2', TOKEN_B, 'list', undefined)).data.incoming, [], 'Боб всё ещё блокирует Алису');
+});
+
+test('блокировка: заблокированный не подключится ни по дружбе, ни по коду комнаты', async () => {
+  const e = await twoPlayers();
+  await fr(e, 'Alice', TOKEN_A, 'request', 'Bob_2');
+  await fr(e, 'Bob_2', TOKEN_B, 'accept', 'Alice');
+  const open = await post(e, '/api/room', { ...as('Alice', TOKEN_A), action: 'open', info: { p2p: true } });
+  const offer = (code) => post(e, '/api/p2p', { ...as('Bob_2', TOKEN_B), action: 'offer', host: 'Alice', id: 'blockedid01', sdp: 'x', code });
+  assert.equal((await offer(open.data.code)).status, 200, 'пока дружат — заходит');
+  await fr(e, 'Alice', TOKEN_A, 'block', 'Bob_2');
+  const byFriend = await offer('');
+  const byCode = await offer(open.data.code);
+  assert.equal(byFriend.status, 403);
+  assert.equal(byCode.status, 403);
+  assert.equal(byCode.data.code, 'closed');
+  assert.equal(byFriend.data.error, byCode.data.error, 'отказ одинаковый — причину не видно');
+});
+
+test('поиск комнаты по коду от имени игрока: заблокированному «не найдена»', async () => {
+  const e = await twoPlayers();
+  await reg(e, 'Carol', TOKEN_C);
+  const open = await post(e, '/api/room', { ...as('Alice', TOKEN_A), action: 'open', info: { version: '1.20.1' } });
+  const look = (who, tok) => post(e, '/api/room', { ...as(who, tok), action: 'lookup', code: open.data.code });
+  assert.equal((await look('Bob_2', TOKEN_B)).data.host, 'Alice');
+  await fr(e, 'Alice', TOKEN_A, 'block', 'Bob_2');
+  const blocked = await look('Bob_2', TOKEN_B);
+  assert.equal(blocked.status, 404);
+  assert.equal(blocked.data.code, 'gone');
+  assert.equal((await look('Carol', TOKEN_C)).status, 200, 'остальные находят');
+  assert.equal((await look('Carol', TOKEN_C)).data.info.version, '1.20.1');
+});
+
+test('не больше 30 новых заявок в сутки, повторный запрос тому же игроку тоже считается', async () => {
+  const e = env();
+  await reg(e, 'Spammer', TOKEN_A);
+  const targets = Array.from({ length: 32 }, (_, i) => ['Target_' + i, tok(500 + i)]);
+  for (const [n, t] of targets) await reg(e, n, t, '30.0.0.' + (Number(n.slice(7)) % 20));
+  const results = [];
+  for (const [n] of targets) results.push((await fr(e, 'Spammer', TOKEN_A, 'request', n, '31.0.0.1')).status);
+  assert.equal(results.filter((s) => s === 200).length, 30);
+  assert.equal(results[30], 429);
+  assert.equal(results[31], 429);
+});
+
+test('блок на сутки ограничен (60), а список блокировок до 200', async () => {
+  const e = env();
+  await reg(e, 'Blocker', TOKEN_A);
+  const names = Array.from({ length: 61 }, (_, i) => ['Victim_' + i, tok(700 + i)]);
+  for (const [n, t] of names) await reg(e, n, t, '40.0.' + Math.floor(Number(n.slice(7)) / 9) + '.1');
+  const codes = [];
+  for (const [n] of names) codes.push((await fr(e, 'Blocker', TOKEN_A, 'block', n, '41.0.0.1')).status);
+  assert.equal(codes.filter((s) => s === 200).length, 60);
+  assert.equal(codes[60], 429);
+});
+
+test('«был в сети»: появляется после выхода, не у тех, кто сейчас в сети и не у скрывающих статус', async () => {
+  const e = await twoPlayers();
+  await reg(e, 'Hidden_3', TOKEN_C);
+  await fr(e, 'Alice', TOKEN_A, 'request', 'Bob_2');
+  await fr(e, 'Bob_2', TOKEN_B, 'accept', 'Alice');
+  await fr(e, 'Alice', TOKEN_A, 'request', 'Hidden_3');
+  await fr(e, 'Hidden_3', TOKEN_C, 'accept', 'Alice');
+  assert.deepEqual((await fr(e, 'Alice', TOKEN_A, 'list', undefined)).data.seen, {}, 'пока никто не заходил');
+  await post(e, '/api/presence', { ...as('Bob_2', TOKEN_B), status: { state: 'online' } });
+  let list = await fr(e, 'Alice', TOKEN_A, 'list', undefined);
+  assert.ok(list.data.status.Bob_2);
+  assert.equal(list.data.seen.Bob_2, undefined, 'в сети — «был» не показываем');
+  await post(e, '/api/presence', { ...as('Bob_2', TOKEN_B), status: null });
+  list = await fr(e, 'Alice', TOKEN_A, 'list', undefined);
+  assert.ok(Math.abs(list.data.seen.Bob_2 - Date.now()) < 5000);
+  assert.equal(list.data.seen.Hidden_3, undefined, 'у него статус всегда был выключен — ничего не запомнено');
+});
+
+test('смена ника переносит блокировки и «был в сети»', async () => {
+  const e = await twoPlayers();
+  await fr(e, 'Alice', TOKEN_A, 'block', 'Bob_2');
+  await post(e, '/api/presence', { ...as('Bob_2', TOKEN_B), status: { state: 'online' } });
+  await post(e, '/api/presence', { ...as('Bob_2', TOKEN_B), status: null });
+  await post(e, '/api/rename', { ...as('Alice', TOKEN_A), new: 'Alice_New', newToken: TOKEN_C });
+  const me = await fr(e, 'Alice_New', TOKEN_C, 'list', undefined);
+  assert.deepEqual(me.data.blocked, ['Bob_2']);
+  const stillBlocked = await fr(e, 'Bob_2', TOKEN_B, 'request', 'Alice_New');
+  assert.deepEqual((await fr(e, 'Alice_New', TOKEN_C, 'list', undefined)).data.incoming, [], 'блок действует на новый ник');
+  assert.equal(stillBlocked.status, 200);
+});
+
 /* ---------------------------------------------------------------- прямое соединение */
 async function friendsPair(e) {
   await reg(e, 'Host_1', TOKEN_A);

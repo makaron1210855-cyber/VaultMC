@@ -399,7 +399,10 @@ const LIMITS = {
   roomLookup: [120, 10 * MIN],  // поиск комнаты по коду с одного адреса
   recovery: [10, 1440 * MIN],   // новый код восстановления на ник
   rename: [3, 1440 * MIN],      // смена ника
+  friendReq: [30, 1440 * MIN],  // новые заявки в друзья с ника (защита от спама)
+  block: [60, 1440 * MIN],      // блокировки с ника
 };
+const MAX_BLOCKED = 200;
 const KV_BUCKET = { upload: 'skin', remove: 'skin', share: 'share', turn: 'turn', recovery: 'recovery', rename: 'rename' };
 
 const SCHEMA = [
@@ -409,8 +412,11 @@ const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS rooms (code TEXT PRIMARY KEY, host TEXT NOT NULL, host_k TEXT NOT NULL, info TEXT NOT NULL, exp INTEGER NOT NULL)',
   'CREATE TABLE IF NOT EXISTS offers (host_k TEXT NOT NULL, id TEXT NOT NULL, from_name TEXT NOT NULL, from_k TEXT NOT NULL, sdp TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (host_k, id))',
   'CREATE TABLE IF NOT EXISTS answers (host_k TEXT NOT NULL, id TEXT NOT NULL, guest_k TEXT NOT NULL, data TEXT NOT NULL, exp INTEGER NOT NULL, PRIMARY KEY (host_k, id))',
+  // когда игрок последний раз был в сети (для «был в сети 2 ч назад» у друзей)
+  'CREATE TABLE IF NOT EXISTS lastseen (k TEXT PRIMARY KEY, at INTEGER NOT NULL)',
 ];
-const LIST_OF = { friend: 'friends', in: 'incoming', out: 'outgoing' };
+// kind в таблице friends: friend — друзья, in/out — заявки, block — «я заблокировал этого игрока»
+const LIST_OF = { friend: 'friends', in: 'incoming', out: 'outgoing', block: 'blocked' };
 const P2P_TTL = 10 * MIN;
 
 // mods — моды хозяина, без которых гостя выкинет из мира (лаунчер гостя предложит поставить только их)
@@ -511,7 +517,7 @@ export class Social {
     if (m.route === 'friends') return this.friends(name, body);
     if (m.route === 'presence') return this.presence(name, body);
     if (m.route === 'p2p') return this.p2p(name, body);
-    if (m.route === 'room') return this.room(name, body);
+    if (m.route === 'room') return this.room(name, body, ip);
     return json({ error: 'Неизвестный адрес' }, 404);
   }
 
@@ -532,7 +538,7 @@ export class Social {
   }
 
   lists(k) {
-    const out = { friends: [], incoming: [], outgoing: [] };
+    const out = { friends: [], incoming: [], outgoing: [], blocked: [] };
     for (const r of this.rows('SELECT other, kind FROM friends WHERE owner = ? ORDER BY rowid', k)) {
       if (LIST_OF[r.kind]) out[LIST_OF[r.kind]].push(r.other);
     }
@@ -563,7 +569,12 @@ export class Social {
         "SELECT f.other AS other, p.data AS data FROM friends f JOIN presence p ON p.k = f.other_k WHERE f.owner = ? AND f.kind = 'friend' AND p.exp > ?",
         me, Date.now());
       for (const r of rows) status[r.other] = JSON.parse(r.data);
-      return json({ ok: true, ...this.lists(me), status });
+      // «был в сети»: только у друзей, которых сейчас нет в сети (если игрок скрывает статус, записи у него просто нет)
+      const seen = {};
+      for (const r of this.rows("SELECT f.other AS other, l.at AS at FROM friends f JOIN lastseen l ON l.k = f.other_k WHERE f.owner = ? AND f.kind = 'friend'", me)) {
+        if (!status[r.other]) seen[r.other] = r.at;
+      }
+      return json({ ok: true, ...this.lists(me), status, seen });
     }
 
     const otherName = String(body.other || '');
@@ -577,15 +588,21 @@ export class Social {
     // дальше — без ожиданий: чтение и запись одним куском
     const mine = this.relation(me, ok), theirs = this.relation(ok, me);
     if (action === 'request') {
+      if (mine === 'block') return json({ error: `Вы заблокировали ${on}. Сначала разблокируйте этого игрока`, code: 'blocked' }, 400);
       if (mine === 'friend' && theirs === 'friend') return json({ ok: true, ...this.lists(me) });
-      if (mine === 'in' || theirs === 'friend' || mine === 'friend') {   // он уже звал нас (или списки разошлись) — сразу дружим
+      if (theirs === 'block') {
+        // Тихий отказ: заявка выглядит отправленной (так заблокированный не узнаёт о блокировке), но до адресата не доходит
+        if (this.hit('freq:' + me, LIMITS.friendReq)) return tooMany('Слишком много заявок за сутки. Попробуйте завтра');
+        this.setRelation(me, on, 'out');
+      } else if (mine === 'in' || theirs === 'friend' || mine === 'friend') {   // он уже звал нас (или списки разошлись) — сразу дружим
         this.setRelation(me, on, 'friend');
         this.setRelation(ok, name, 'friend');
       } else {
         if (mine === 'out' && theirs === 'in') return json({ ok: true, ...this.lists(me) });
         if (this.countKind(me, 'out') > 200) return json({ error: 'Слишком много заявок' }, 429);
-        // защита от спама: у одного игрока не больше 200 входящих заявок
+        // защита от спама: у одного игрока не больше 200 входящих заявок и 30 новых заявок в сутки
         if (theirs !== 'in' && this.countKind(ok, 'in') > 200) return json({ error: `У ${on} слишком много заявок` }, 429);
+        if (this.hit('freq:' + me, LIMITS.friendReq)) return tooMany('Слишком много заявок за сутки. Попробуйте завтра');
         this.setRelation(me, on, 'out');
         this.setRelation(ok, name, 'in');
       }
@@ -594,8 +611,16 @@ export class Social {
       this.setRelation(me, on, 'friend');
       this.setRelation(ok, name, 'friend');
     } else if (action === 'decline' || action === 'remove') {
-      this.setRelation(me, on, null);
-      this.setRelation(ok, name, null);
+      // чужую блокировку (theirs === 'block') и свою (mine === 'block') эти действия не снимают — для этого есть unblock
+      if (mine !== 'block') this.setRelation(me, on, null);
+      if (theirs !== 'block') this.setRelation(ok, name, null);
+    } else if (action === 'block') {
+      if (mine !== 'block' && this.countKind(me, 'block') >= MAX_BLOCKED) return json({ error: 'Слишком много заблокированных игроков' }, 429);
+      if (this.hit('block:' + me, LIMITS.block)) return tooMany('Слишком много блокировок за сутки. Попробуйте завтра');
+      this.setRelation(me, on, 'block');                       // дружба и заявки в обе стороны пропадают
+      if (theirs && theirs !== 'block') this.setRelation(ok, name, null);
+    } else if (action === 'unblock') {
+      if (mine === 'block') this.setRelation(me, on, null);
     } else {
       return json({ error: 'Неизвестное действие' }, 400);
     }
@@ -617,6 +642,7 @@ export class Social {
     // дальше — без ожиданий
     this.sql.exec('UPDATE OR REPLACE friends SET owner = ? WHERE owner = ?', tk, fk);
     this.sql.exec('UPDATE OR REPLACE friends SET other_k = ?, other = ? WHERE other_k = ?', tk, to, fk);
+    this.sql.exec('UPDATE OR REPLACE lastseen SET k = ? WHERE k = ?', tk, fk);
     this.sql.exec('INSERT OR IGNORE INTO imported (k) VALUES (?)', tk);
     this.sql.exec('DELETE FROM presence WHERE k = ?', fk);
     this.sql.exec('DELETE FROM rooms WHERE host_k = ?', fk);
@@ -643,7 +669,12 @@ export class Social {
   presence(name, body) {
     const st = body.status;
     const k = key(name);
-    if (!st) { this.sql.exec('DELETE FROM presence WHERE k = ?', k); return json({ ok: true }); }
+    if (!st) {
+      const had = this.rows('SELECT 1 FROM presence WHERE k = ?', k).length > 0;
+      this.sql.exec('DELETE FROM presence WHERE k = ?', k);
+      if (had) this.touchSeen(k);                                // вышел из сети — запоминаем, когда
+      return json({ ok: true });
+    }
     const clean = {
       state: ['online', 'playing'].includes(st.state) ? st.state : 'online',
       instance: String(st.instance || '').slice(0, 60),
@@ -657,17 +688,31 @@ export class Social {
       at: Date.now(),
     };
     this.sql.exec('INSERT OR REPLACE INTO presence (k, data, exp) VALUES (?, ?, ?)', k, JSON.stringify(clean), Date.now() + 40 * MIN);
+    this.touchSeen(k);
     return json({ ok: true });
   }
+
+  touchSeen(k) { this.sql.exec('INSERT OR REPLACE INTO lastseen (k, at) VALUES (?, ?)', k, Date.now()); }
 
   /* ---------------- комнаты по коду (без добавления в друзья) */
   // Хозяин открыл мир «для друзей» — получает код из 6 символов. Любой, у кого есть код, видит, к кому и в какую
   // версию заходить, и может подключиться напрямую (p2p с этим кодом) или по адресу e4mc. Комната живёт 6 часов
   // или пока хозяин её не закроет.
-  room(name, body) {
+  room(name, body, ip = '') {
     const action = String(body.action || '');
     const code = String(body.code || '').toUpperCase();
     const now = Date.now();
+    if (action === 'lookup') {
+      // Поиск комнаты от имени игрока (лаунчер 6.4.20+): заблокированный хозяином видит «комната не найдена».
+      // Старые лаунчеры ищут через GET /api/room/<код> без имени — там заблокированных не узнать (убрать после 1.0).
+      if (this.hit('lookup:' + ip, LIMITS.roomLookup)) return tooMany('Слишком много попыток найти комнату. Подождите 10 минут');
+      if (!CODE_RE.test(code)) return json({ error: 'Неверный код комнаты' }, 400);
+      const r = this.rows('SELECT host, host_k, info FROM rooms WHERE code = ? AND exp > ?', code, now)[0];
+      if (!r || this.relation(r.host_k, key(name)) === 'block') {
+        return json({ error: 'Комната не найдена — она уже закрыта или код с ошибкой', code: 'gone' }, 404);
+      }
+      return json({ ok: true, host: r.host, info: JSON.parse(r.info) });
+    }
     if (action === 'open') {
       if (this.hit('roomOpen:' + key(name), LIMITS.roomOpen)) return tooMany('Сегодня открыто слишком много комнат. Попробуйте завтра');
       for (let attempt = 0; attempt < 5; attempt++) {
@@ -711,6 +756,8 @@ export class Social {
       if (!okId(body.id) || !NAME_RE.test(host) || big(body.sdp)) return json({ error: 'Неверный запрос' }, 400);
       const hk = key(host);
       const code = String(body.code || '');
+      // заблокированный хозяином получает одинаковый отказ и по дружбе, и по коду комнаты — причину он не узнаёт
+      if (this.relation(hk, me) === 'block') return json({ error: `${host} сейчас не принимает подключения`, code: 'closed' }, 403);
       const viaCode = CODE_RE.test(code) && this.rows('SELECT 1 FROM rooms WHERE code = ? AND host_k = ? AND exp > ?', code, hk, now).length > 0;
       if (!viaCode) {
         await this.importFriends(host);

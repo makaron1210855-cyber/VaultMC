@@ -287,6 +287,12 @@ def room(name: str, action: str, code: str = "", info: dict | None = None) -> di
     return _authed(name, "/api/room", {"action": action, "code": code, "info": info or {}})
 
 
+def lookup_room(name: str, code: str) -> dict:
+    """Поиск комнаты от имени игрока (сервер 6.4.20+): хозяин, заблокировавший игрока, для него «комнаты нет».
+    Старый сервер ответит «неизвестное действие» — тогда вызывающий откатывается на get_room."""
+    return _authed(name, "/api/room", {"action": "lookup", "code": code})
+
+
 def get_room(code: str) -> dict:
     """К кому и в какую версию заходить по коду комнаты. Не требует аккаунта."""
     url = server_url()
