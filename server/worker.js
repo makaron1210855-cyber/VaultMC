@@ -45,6 +45,7 @@ const MIN = 60 * 1000;
 const ROUTES = {
   '/api/upload': 'upload', '/api/remove': 'remove', '/api/share': 'share', '/api/turn': 'turn',
   '/api/friends': 'friends', '/api/presence': 'presence', '/api/p2p': 'p2p', '/api/room': 'room',
+  '/api/recovery': 'recovery', '/api/rename': 'rename',
 };
 const SOCIAL_ROUTES = new Set(['friends', 'presence', 'p2p', 'room']);
 
@@ -72,7 +73,7 @@ export default {
       if (request.method !== 'POST') return json({ error: 'Метод не поддерживается' }, 405);
       const body = await request.json().catch(() => null);
       if (!body || typeof body !== 'object') return json({ error: 'Пустой запрос' }, 400);
-      if (path === '/api/register') return register(env, body, () => gate(env, ip));
+      if (path === '/api/register') return register(env, body, () => gate(env, ip), ip);
       const route = ROUTES[path];
       if (!route) return json({ error: 'Неизвестный адрес' }, 404);
       const who = await auth(env, body);
@@ -87,6 +88,8 @@ export default {
       if (route === 'upload') return upload(env, who.name, body);
       if (route === 'remove') return remove(env, who.name, body);
       if (route === 'share') return putShare(env, who.name, body);
+      if (route === 'recovery') return setRecovery(env, who.name, body);
+      if (route === 'rename') return renameNick(env, who.name, body);
       return turn(env);
     } catch (err) {
       // подробности — только в журнал воркера, игроку — общий текст (раньше наружу уходило сообщение об ошибке)
@@ -206,9 +209,67 @@ async function elybyProven(name, serverId) {
   } catch { return false; }
 }
 
+/* ---------------------------------------------------------------- код восстановления и смена ника */
+// Код восстановления — 16 знаков (80 бит), его придумывает лаунчер и показывает игроку один раз.
+// Сервер хранит только SHA-256 кода. Код одноразовый: после сброса пароля его нет, лаунчер выдаёт новый.
+const RECOVERY_RE = new RegExp(`^[${CODE_CHARS}]{16}$`);
+const normCode = (v) => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const recoveryHash = (code) => sha256('vaultmc-recovery:' + code);
+
+async function setRecovery(env, name, body) {
+  const code = normCode(body.code);
+  if (!RECOVERY_RE.test(code)) return json({ error: 'Неверный код восстановления' }, 400);
+  const user = await getUser(env, name);
+  if (!user) return json({ error: 'Ник не зарегистрирован на сервере VaultMC', code: 'auth' }, 403);
+  if (user.ely) return json({ error: 'У аккаунта Ely.by пароль восстанавливается на сайте Ely.by' }, 400);
+  await env.SKINS.put('user:' + key(name), JSON.stringify({ ...user, recovery: await recoveryHash(code) }));
+  return json({ ok: true });
+}
+
+// Сброс пароля по коду: у ника остаётся только новый ключ (все старые перестают работать), код погашен.
+async function recoverNick(env, existing, name, hash, body, ip) {
+  const code = normCode(body.recovery);
+  const ok = !!existing.recovery && RECOVERY_RE.test(code) && (await recoveryHash(code)) === existing.recovery;
+  const res = await social(env, { op: 'recovery', ip, nick: name, ok });   // блокировка подбора — как у пароля
+  if (res.status !== 200) return res;
+  await env.SKINS.put('user:' + key(name), JSON.stringify({ name: existing.name, hash, hashes: [hash], ely: false, created: existing.created }));
+  return json({ ok: true, recovered: true });
+}
+
+// Смена ника (оффлайн-аккаунт): друзья, скин, плащ и код восстановления переезжают, старый ник освобождается.
+// Ключ нового ника (из пароля и нового ника) — единственный; на других ПК нужно войти заново.
+// Порядок: сначала друзья (Durable Object), потом записи KV — если что-то оборвётся, повтор пройдёт.
+async function renameNick(env, name, body) {
+  const to = String(body.new || '');
+  const token = String(body.newToken || '');
+  if (!NAME_RE.test(to)) return json({ error: 'Ник: 3–16 символов, латиница, цифры и _' }, 400);
+  if (token.length < 32) return json({ error: 'Слишком короткий ключ' }, 400);
+  const user = await getUser(env, name);
+  if (!user) return json({ error: 'Ник не зарегистрирован на сервере VaultMC', code: 'auth' }, 403);
+  if (user.ely) return json({ error: 'Ник аккаунта Ely.by меняется на сайте Ely.by' }, 400);
+  const same = key(to) === key(name);
+  if (!same && await getUser(env, to)) return json({ error: `Ник ${to} уже занят в VaultMC`, code: 'taken' }, 409);
+  const res = await social(env, { op: 'renameSocial', from: user.name, to });
+  if (res.status !== 200) return res;
+  if (!same) {
+    for (const kind of ['skin', 'cape']) {
+      const v = await env.SKINS.get(kind + ':' + key(name));
+      if (v) await env.SKINS.put(kind + ':' + key(to), v);
+    }
+  }
+  const hash = await sha256(token);
+  await env.SKINS.put('user:' + key(to), JSON.stringify({ name: to, hash, hashes: [hash], ely: false, created: user.created,
+    ...(user.recovery ? { recovery: user.recovery } : {}) }));
+  if (!same) {
+    await env.SKINS.delete('user:' + key(name));
+    await Promise.all(['skin', 'cape'].map((k) => env.SKINS.delete(k + ':' + key(name))));
+  }
+  return json({ ok: true, name: to });
+}
+
 // allow() вызывается прямо перед записью в KV: повторный вход с тем же ключом (каждый запуск лаунчера)
 // в лимит не считается, считаются только новые ники и смена ключа.
-async function register(env, body, allow) {
+async function register(env, body, allow, ip = '') {
   const name = String(body.name || '');
   const token = String(body.token || '');
   if (!NAME_RE.test(name)) return json({ error: 'Ник: 3–16 символов, латиница, цифры и _' }, 400);
@@ -217,6 +278,8 @@ async function register(env, body, allow) {
   const hash = await sha256(token);
   const hashes = existing ? userHashes(existing) : [];
   if (hashes.includes(hash)) return json({ ok: true, already: true, ely: !!existing.ely });
+  // подбор кода закрывает та же блокировка, что и подбор пароля (20 неверных за 10 минут с адреса)
+  if (existing && body.recovery !== undefined) return recoverNick(env, existing, name, hash, body, ip);
   // Свободный ник занимает первый, кто пришёл — даже если такой ник есть на Ely.by (раньше оффлайн-игрока
   // с таким ником сервер не пускал совсем, и у него не работали друзья и комнаты).
   if (existing) {
@@ -228,9 +291,12 @@ async function register(env, body, allow) {
     if (!oldOk && !proven) return json({ error: TAKEN(existing.name), code: 'taken' }, 409);
     const denied = await allow();
     if (denied) return denied;
-    const keep = oldOk || existing.ely ? hashes : [];
+    // replace — игрок сменил пароль: прежние ключи (в том числе старый пароль) больше не действуют
+    const keep = oldOk && body.replace ? [] : oldOk || existing.ely ? hashes : [];
     const ely = proven || !!existing.ely;
-    await env.SKINS.put('user:' + key(name), JSON.stringify({ name: existing.name, hash, hashes: [...keep, hash].slice(-5), ely, created: existing.created }));
+    // код восстановления остаётся, только если это тот же игрок (знает прежний ключ), а не новый владелец ника
+    const recovery = oldOk && existing.recovery ? { recovery: existing.recovery } : {};
+    await env.SKINS.put('user:' + key(name), JSON.stringify({ name: existing.name, hash, hashes: [...keep, hash].slice(-5), ely, created: existing.created, ...recovery }));
     return json({ ok: true, ely });
   }
   const denied = await allow();
@@ -331,8 +397,10 @@ const LIMITS = {
   roomOpen: [50, 1440 * MIN],   // новые комнаты на ник
   nick: [240, MIN],             // любые запросы одного ника (лаунчер-хозяин спрашивает раз в 4 с — это 15 в минуту)
   roomLookup: [120, 10 * MIN],  // поиск комнаты по коду с одного адреса
+  recovery: [10, 1440 * MIN],   // новый код восстановления на ник
+  rename: [3, 1440 * MIN],      // смена ника
 };
-const KV_BUCKET = { upload: 'skin', remove: 'skin', share: 'share', turn: 'turn' };
+const KV_BUCKET = { upload: 'skin', remove: 'skin', share: 'share', turn: 'turn', recovery: 'recovery', rename: 'rename' };
 
 const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS friends (owner TEXT NOT NULL, other_k TEXT NOT NULL, other TEXT NOT NULL, kind TEXT NOT NULL, PRIMARY KEY (owner, other_k))',
@@ -411,15 +479,22 @@ export class Social {
       if (this.hit('lookup:' + ip, LIMITS.roomLookup)) return tooMany('Слишком много попыток найти комнату. Подождите 10 минут');
       return this.getRoom(String(m.code || ''));
     }
-    if (m.op !== 'call') return json({ error: 'Неизвестный запрос' }, 400);
+    if (m.op === 'renameSocial') return this.renameSocial(String(m.from || ''), String(m.to || ''));
+    if (!['call', 'recovery'].includes(m.op)) return json({ error: 'Неизвестный запрос' }, 400);
 
     // Блокировка после неверных паролей действует на все запросы этого ника с этого адреса — даже с верным
     // паролем, иначе подбор просто продолжался бы. Общий предел на ник выше, чтобы чужой не мог легко
-    // заблокировать игрока со своего адреса.
+    // заблокировать игрока со своего адреса. Неверный код восстановления считается так же.
     const nk = key(String(m.nick || ''));
     const failIp = 'fail:' + nk + ':' + ip, failNick = 'fail:' + nk;
     if (this.reached(failIp, LIMITS.failIp) || this.reached(failNick, LIMITS.failNick)) {
       return tooMany('Слишком много попыток входа с неверным паролем. Подождите 10 минут');
+    }
+    if (m.op === 'recovery') {
+      if (m.ok) return json({ allow: true });
+      this.hit(failIp, LIMITS.failIp);
+      this.hit(failNick, LIMITS.failNick);
+      return json({ error: 'Неверный код восстановления — проверьте, что ник и код набраны без ошибок', code: 'recovery' }, 403);
     }
     if (m.authError) {
       if (m.fail) { this.hit(failIp, LIMITS.failIp); this.hit(failNick, LIMITS.failNick); }
@@ -527,6 +602,32 @@ export class Social {
     const mineNow = this.lists(me);
     await this.backupFriends([[name, mineNow], [on, this.lists(ok)]]);
     return json({ ok: true, ...mineNow });
+  }
+
+  // Смена ника: во всех списках друзей старый ник заменяется новым. Сначала переносим из KV списки самого игрока
+  // и всех его друзей — иначе друг, ещё не перенесённый с сервера v5, потом принёс бы старый ник из KV, и чужой,
+  // занявший освободившийся ник, получил бы его друзей.
+  async renameSocial(from, to) {
+    if (!NAME_RE.test(from) || !NAME_RE.test(to)) return json({ error: 'Неверный ник' }, 400);
+    const fk = key(from), tk = key(to);
+    await this.importFriends(from);
+    for (const other of this.rows('SELECT other FROM friends WHERE owner = ?', fk).map((r) => r.other)) {
+      await this.importFriends(other);
+    }
+    // дальше — без ожиданий
+    this.sql.exec('UPDATE OR REPLACE friends SET owner = ? WHERE owner = ?', tk, fk);
+    this.sql.exec('UPDATE OR REPLACE friends SET other_k = ?, other = ? WHERE other_k = ?', tk, to, fk);
+    this.sql.exec('INSERT OR IGNORE INTO imported (k) VALUES (?)', tk);
+    this.sql.exec('DELETE FROM presence WHERE k = ?', fk);
+    this.sql.exec('DELETE FROM rooms WHERE host_k = ?', fk);
+    this.sql.exec('DELETE FROM offers WHERE host_k = ? OR from_k = ?', fk, fk);
+    this.sql.exec('DELETE FROM answers WHERE host_k = ? OR guest_k = ?', fk, fk);
+    const mine = this.lists(tk);
+    await this.backupFriends([[to, mine]]);
+    if (fk !== tk) {
+      try { await this.env.SKINS.delete('friends:' + fk); } catch (err) { console.error('rename backup', err); }
+    }
+    return json({ ok: true });
   }
 
   // Временно, на время переезда: копия списков в KV (как у сервера версии 5), чтобы откат не терял друзей.

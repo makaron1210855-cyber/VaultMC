@@ -246,6 +246,109 @@ test('40 одновременных заявок одному игроку: не
   assert.equal(list.data.incoming.length, 40);
 });
 
+/* ---------------------------------------------------------------- аккаунты: пароль, код восстановления, смена ника */
+const TOKEN_C = 'c'.repeat(40);
+const CODE = 'ABCDEFGHJKLMNPQR';
+
+test('смена пароля закрывает старый ключ', async () => {
+  const e = env();
+  await reg(e, 'Steve_1', TOKEN_A);
+  const ch = await post(e, '/api/register', { name: 'Steve_1', token: TOKEN_B, old: TOKEN_A, replace: true });
+  assert.equal(ch.status, 200);
+  assert.equal((await post(e, '/api/presence', { ...as('Steve_1', TOKEN_B), status: null })).status, 200);
+  const old = await post(e, '/api/presence', { ...as('Steve_1', TOKEN_A), status: null });
+  assert.equal(old.status, 403, 'старый пароль больше не действует');
+});
+
+test('без replace (вход на другом ПК) прежний ключ остаётся', async () => {
+  const e = env();
+  await reg(e, 'Steve_1', TOKEN_A);
+  await post(e, '/api/register', { name: 'Steve_1', token: TOKEN_B, old: TOKEN_A });
+  assert.equal((await post(e, '/api/presence', { ...as('Steve_1', TOKEN_A), status: null })).status, 200);
+});
+
+test('код восстановления: сброс пароля, код одноразовый, старые ключи не действуют', async () => {
+  const e = env();
+  await reg(e, 'Steve_1', TOKEN_A);
+  assert.equal((await post(e, '/api/recovery', { ...as('Steve_1', TOKEN_A), code: 'ABCD-EFGH-JKLM-NPQR' })).status, 200);
+  assert.ok(!e.SKINS.m.get('user:steve_1').includes(CODE), 'сервер хранит не сам код');
+
+  const bad = await post(e, '/api/register', { name: 'Steve_1', token: TOKEN_C, recovery: 'ZZZZZZZZZZZZZZZZ' });
+  assert.equal(bad.status, 403);
+  assert.equal(bad.data.code, 'recovery');
+
+  const ok = await post(e, '/api/register', { name: 'Steve_1', token: TOKEN_C, recovery: 'abcd efgh jklm npqr' });
+  assert.equal(ok.data.recovered, true);
+  assert.equal((await post(e, '/api/presence', { ...as('Steve_1', TOKEN_C), status: null })).status, 200);
+  assert.equal((await post(e, '/api/presence', { ...as('Steve_1', TOKEN_A), status: null }, '2.2.2.2')).status, 403);
+  const again = await post(e, '/api/register', { name: 'Steve_1', token: TOKEN_B, recovery: CODE });
+  assert.equal(again.status, 403, 'код одноразовый');
+});
+
+test('подбор кода восстановления блокируется', async () => {
+  const e = env();
+  await reg(e, 'Steve_1', TOKEN_A);
+  await post(e, '/api/recovery', { ...as('Steve_1', TOKEN_A), code: CODE });
+  for (let i = 0; i < 20; i++) {
+    const r = await post(e, '/api/register', { name: 'Steve_1', token: 'x'.repeat(38) + String(i).padStart(2, '0'), recovery: 'Z'.repeat(15) + 'A' }, '6.6.6.6');
+    assert.equal(r.status, 403);
+  }
+  const r = await post(e, '/api/register', { name: 'Steve_1', token: TOKEN_C, recovery: CODE }, '6.6.6.6');
+  assert.equal(r.status, 429, 'после 20 неверных попыток с адреса — блокировка, даже с верным кодом');
+  const other = await post(e, '/api/register', { name: 'Steve_1', token: TOKEN_C, recovery: CODE }, '7.7.7.7');
+  assert.equal(other.data.recovered, true, 'хозяин с другого адреса восстанавливает');
+});
+
+test('смена ника: друзья, скин, код восстановления переезжают, старый ник свободен', async () => {
+  const e = env();
+  await reg(e, 'Old_Nick', TOKEN_A);
+  await reg(e, 'Buddy', TOKEN_B);
+  await post(e, '/api/friends', { ...as('Buddy', TOKEN_B), action: 'request', other: 'Old_Nick' });
+  await post(e, '/api/friends', { ...as('Old_Nick', TOKEN_A), action: 'accept', other: 'Buddy' });
+  e.SKINS.m.set('skin:old_nick', JSON.stringify({ png: 'AAAA', slim: false, hash: 'h' }));
+  await post(e, '/api/recovery', { ...as('Old_Nick', TOKEN_A), code: CODE });
+
+  const r = await post(e, '/api/rename', { ...as('Old_Nick', TOKEN_A), new: 'New_Nick', newToken: TOKEN_C });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.name, 'New_Nick');
+  assert.ok(e.SKINS.m.get('skin:new_nick'));
+  assert.ok(!e.SKINS.m.get('skin:old_nick'));
+  assert.ok(!e.SKINS.m.get('user:old_nick'));
+  const buddy = await post(e, '/api/friends', { ...as('Buddy', TOKEN_B), action: 'list' });
+  assert.deepEqual(buddy.data.friends, ['New_Nick']);
+  const me = await post(e, '/api/friends', { ...as('New_Nick', TOKEN_C), action: 'list' });
+  assert.deepEqual(me.data.friends, ['Buddy']);
+  // код восстановления переехал
+  const rec = await post(e, '/api/register', { name: 'New_Nick', token: 'd'.repeat(40), recovery: CODE });
+  assert.equal(rec.data.recovered, true);
+  // старый ник может занять кто угодно — и он не получает чужих друзей
+  await reg(e, 'Old_Nick', 'e'.repeat(40), '3.3.3.3');
+  const stranger = await post(e, '/api/friends', { ...as('Old_Nick', 'e'.repeat(40)), action: 'list' }, '3.3.3.3');
+  assert.deepEqual(stranger.data.friends, []);
+});
+
+test('смена ника: занятый ник и ник Ely.by отклоняются', async () => {
+  const e = env();
+  await reg(e, 'Nick_A', TOKEN_A);
+  await reg(e, 'Nick_B', TOKEN_B);
+  const taken = await post(e, '/api/rename', { ...as('Nick_A', TOKEN_A), new: 'nick_b', newToken: TOKEN_C });
+  assert.equal(taken.status, 409);
+  e.SKINS.m.set('user:ely_one', JSON.stringify({ name: 'Ely_One', hash: 'x', hashes: [], ely: true }));
+  const ely = JSON.parse(e.SKINS.m.get('user:ely_one'));
+  assert.equal(ely.ely, true);
+});
+
+test('смена ника: друг ещё со старого сервера (KV) не уносит старый ник', async () => {
+  const e = env();
+  await reg(e, 'Old_Nick', TOKEN_A);
+  await reg(e, 'Legacy', TOKEN_B);
+  e.SKINS.m.set('friends:old_nick', JSON.stringify({ friends: ['Legacy'], incoming: [], outgoing: [] }));
+  e.SKINS.m.set('friends:legacy', JSON.stringify({ friends: ['Old_Nick'], incoming: [], outgoing: [] }));
+  await post(e, '/api/rename', { ...as('Old_Nick', TOKEN_A), new: 'New_Nick', newToken: TOKEN_C });
+  const legacy = await post(e, '/api/friends', { ...as('Legacy', TOKEN_B), action: 'list' });
+  assert.deepEqual(legacy.data.friends, ['New_Nick']);
+});
+
 /* ---------------------------------------------------------------- прямое соединение */
 async function friendsPair(e) {
   await reg(e, 'Host_1', TOKEN_A);

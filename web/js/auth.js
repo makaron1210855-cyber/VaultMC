@@ -10,6 +10,7 @@ function authFormHtml(prefillNick = '') {
       <div data-pane="offline">
         <label class="field"><span>Никнейм</span><input class="input" id="offNick" placeholder="Steve" value="${esc(prefillNick)}" maxlength="16"></label>
         <label class="field"><span>Пароль</span><input class="input" id="offPw" type="password" placeholder="••••••"></label>
+        <p class="small" style="margin:-4px 0 8px"><a href="#" id="offForgot">Забыли пароль?</a></p>
         <div data-reg class="hidden"><div class="strength"><div id="pwStrength"></div></div>
           <p class="small auth-new">Такого аккаунта на этом компьютере ещё нет. Повторите пароль — и он будет создан.</p>
           <label class="field"><span>Повторите пароль</span><input class="input" id="offPw2" type="password" placeholder="••••••"></label></div>
@@ -96,6 +97,7 @@ function bindAuthForm(root, onDone) {
   // сменили ник — это уже может быть существующий аккаунт: снова обычный вход
   $('#offNick', root).addEventListener('input', () => { if (st.mode === 'register') { st.mode = 'login'; update(); } });
   $('#elyReg', root).onclick = (e) => { e.preventDefault(); api.elyby_register(); };
+  $('#offForgot', root).onclick = (e) => { e.preventDefault(); openRecoverDialog($('#offNick', root).value.trim()); };
   $('.ely-pw-login', root).addEventListener('toggle', update);
   const elyBtn = $('#elyOauth', root);
   const elyBtnText = elyBtn.textContent;
@@ -170,7 +172,75 @@ function applyAccountResult(res) {
   renderAccount();
   if (S.page === 'lobby' || S.page === 'settings') refreshPage();
   else go('lobby');
-  maybeShowTutorial();  // первый вход — показываем обучение
+  if (res.recoveryCode) showRecoveryCode(res.recoveryCode);       // новый аккаунт или сброс пароля — новый код
+  else if (res.recoveryError) toast(res.recoveryError, 'warn', 10000);
+  else maybeShowTutorial();  // первый вход — показываем обучение
+}
+
+/* ---------------------------------------------------------------- код восстановления */
+function showRecoveryCode(code) {
+  const m = openModal(`<h3>${ic('key')} Код восстановления</h3>
+    <p class="muted small">Если забудете пароль, этот код вернёт аккаунт — вместе с друзьями и скином, на любом компьютере. Сохраните его: запишите или сделайте снимок экрана. Лаунчер показывает код только сейчас и нигде его не хранит.</p>
+    <div class="share-code mono no-tr" style="font-size:22px;letter-spacing:3px">${esc(code)}</div>
+    <p class="note">Код одноразовый: после восстановления пароля лаунчер выдаст новый. Новый код в «Настройках» заменяет прежний.</p>
+    <div class="foot"><button class="btn" id="rcCopy">${ic('copy')} Скопировать</button><button class="btn primary" data-close>Я сохранил код</button></div>`);
+  $('#rcCopy', m).onclick = () => copyText(code);
+}
+
+function openRecoverDialog(nick = '') {
+  const m = openModal(`<h3>Восстановить пароль</h3>
+    <p class="muted small">Нужен код восстановления — его лаунчер показал при создании аккаунта (или вы получили его в «Настройках»). Друзья, скин и комнаты останутся. Старый пароль перестанет действовать на всех компьютерах.</p>
+    <label class="field"><span>Никнейм</span><input class="input" id="rcNick" maxlength="16" value="${esc(nick)}"></label>
+    <label class="field"><span>Код восстановления</span><input class="input mono" id="rcCode" maxlength="24" placeholder="K7XQ-2M9P-4HTR-8WVD" style="text-transform:uppercase;letter-spacing:2px"></label>
+    <label class="field"><span>Новый пароль</span><input class="input" id="rcPw" type="password"></label>
+    <label class="field"><span>Повторите пароль</span><input class="input" id="rcPw2" type="password"></label>
+    <div class="form-error" id="rcErr"></div>
+    <div class="foot"><button class="btn ghost" data-close>Отмена</button><button class="btn primary" id="rcGo">Восстановить</button></div>`);
+  $(nick ? '#rcCode' : '#rcNick', m).focus();
+  const go1 = async () => {
+    const btn = $('#rcGo', m);
+    btn.disabled = true;
+    const r = await safe(api.recover_offline($('#rcNick', m).value.trim(), $('#rcCode', m).value, $('#rcPw', m).value, $('#rcPw2', m).value));
+    btn.disabled = false;
+    if (!r) return;
+    if (r.error) { $('#rcErr', m).textContent = r.error; return; }
+    m.close(); hideAuth();
+    toast(`Пароль изменён. Добро пожаловать, ${r.account.username}!`);
+    applyAccountResult(r);
+  };
+  $('#rcGo', m).onclick = go1;
+  m.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('input')) go1(); });
+}
+
+/* ---------------------------------------------------------------- смена ника */
+function openRenameDialog() {
+  const acc = S.account;
+  const m = openModal(`<h3>Сменить ник</h3>
+    <p class="muted small">Сейчас: <b>${esc(acc.username)}</b>. Друзья, скин, плащ и код восстановления перейдут на новый ник, старый ник освободится.</p>
+    <ul class="fr-rules small">
+      <li><b>В ваших одиночных мирах</b> всё сохранится.</li>
+      <li><b>В мирах друзей и на серверах</b> вы появитесь новым игроком — вещи и прогресс там останутся у старого ника.</li>
+      <li>На других компьютерах нужно будет войти заново, уже с новым ником.</li></ul>
+    <label class="field"><span>Новый ник</span><input class="input" id="rnNick" maxlength="16" placeholder="Steve"></label>
+    <label class="field"><span>Пароль аккаунта</span><input class="input" id="rnPw" type="password"></label>
+    <div class="form-error" id="rnErr"></div>
+    <div class="foot"><button class="btn ghost" data-close>Отмена</button><button class="btn primary" id="rnGo">Сменить ник</button></div>`);
+  $('#rnNick', m).focus();
+  const go1 = async () => {
+    const btn = $('#rnGo', m);
+    btn.disabled = true;
+    const r = await safe(api.rename_account($('#rnNick', m).value.trim(), $('#rnPw', m).value));
+    btn.disabled = false;
+    if (!r) return;
+    if (r.error) { $('#rnErr', m).textContent = r.error; return; }
+    m.close();
+    S.account = r.account; S.accounts = r.accounts || S.accounts;
+    renderAccount();
+    if (S.page === 'settings') refreshPage();
+    toast(`Теперь ваш ник — ${r.account.username}`);
+  };
+  $('#rnGo', m).onclick = go1;
+  m.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('input')) go1(); });
 }
 
 /* ---------------------------------------------------------------- аватар и меню аккаунтов */

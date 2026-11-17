@@ -86,7 +86,10 @@ registerPage('settings', {
 
       ${S.account?.kind === 'offline' ? `<div class="card"><div class="card-title">${ic('key')} Пароль аккаунта ${esc(S.account.username)}</div>
         <div class="row"><input class="input" type="password" id="pw0" placeholder="Текущий пароль"><input class="input" type="password" id="pw1" placeholder="Новый пароль">
-        <input class="input" type="password" id="pw2" placeholder="Повторите"><button class="btn primary" data-a="pw">Сменить</button></div></div>` : ''}
+        <input class="input" type="password" id="pw2" placeholder="Повторите"><button class="btn primary" data-a="pw">Сменить</button></div>
+        <p class="small muted" style="margin:8px 0">После смены пароля старый перестаёт действовать на всех компьютерах.</p>
+        <div class="row wrap"><button class="btn" data-a="recovery">${ic('key')} Получить код восстановления</button>
+          <button class="btn" data-a="rename">${ic('pencil')} Сменить ник</button></div></div>` : ''}
       <p class="note">Все настройки, аккаунты, сборки и друзья сохраняются автоматически и остаются после перезапуска и переустановки VaultMC.</p>
     </div>`;
     hydrateIcons(el);
@@ -153,6 +156,12 @@ registerPage('settings', {
       if (a === 'tutorial') showTutorial();
       if (a === 'checkUpdate') checkUpdates(true);
       if (a === 'shortcut') { const r = await safe(api.create_shortcut()); if (r && okOrToast(r)) toast('Ярлык создан: ' + r.path); }
+      if (a === 'recovery') {
+        if (!await confirmDialog('Получить код восстановления?', 'Новый код заменит прежний: старый перестанет работать. Сохраните новый код сразу.', 'Получить код')) return;
+        const r = await safe(api.recovery_code());
+        if (r && okOrToast(r)) showRecoveryCode(r.code);
+      }
+      if (a === 'rename') openRenameDialog();
       if (a === 'pw') {
         const r = await safe(api.change_password($('#pw0', el).value, $('#pw1', el).value, $('#pw2', el).value));
         if (r && okOrToast(r)) { toast('Пароль изменён'); ['#pw0', '#pw1', '#pw2'].forEach((s) => ($(s, el).value = '')); }

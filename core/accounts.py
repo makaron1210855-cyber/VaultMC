@@ -204,6 +204,38 @@ class AccountStore:
         self.set_active(acc.id)
         return acc
 
+    def check_password(self, account_id: str, password: str) -> None:
+        acc = self.accounts[account_id]
+        if acc.kind != "offline" or not hmac.compare_digest(self._hash(password, acc.salt), acc.password_hash):
+            raise AuthError("Неверный пароль")
+
+    def reset_offline_password(self, username: str, password: str, repeat: str) -> Account:
+        """Пароль сброшен по коду восстановления (сервер его уже подтвердил): ставим новый пароль локально.
+        На новом ПК аккаунта ещё нет — создаём."""
+        self._check_password(password, repeat)
+        acc = self._find_offline(username)
+        if acc is None:
+            return self.register_offline(username, password, repeat)
+        acc.salt = secrets.token_hex(16)
+        acc.password_hash = self._hash(password, acc.salt)
+        acc.remembered = True
+        self.set_active(acc.id)
+        return acc
+
+    def rename_offline(self, account_id: str, new_name: str) -> Account:
+        """Новый ник оффлайн-аккаунта (сервер уже переименовал). UUID в игре считается из ника — он тоже меняется."""
+        acc = self.accounts[account_id]
+        new_name = new_name.strip()
+        if not NICKNAME_RE.match(new_name):
+            raise AuthError("Ник: 3–16 символов, латиница, цифры и _")
+        other = self._find_offline(new_name)
+        if other and other.id != acc.id:
+            raise AuthError("На этом компьютере уже есть оффлайн-аккаунт с таким ником")
+        acc.username = new_name
+        acc.uuid = offline_uuid(new_name)
+        self.save()
+        return acc
+
     def change_password(self, account_id: str, old: str, new: str, repeat: str) -> None:
         acc = self.accounts[account_id]
         if acc.kind != "offline":

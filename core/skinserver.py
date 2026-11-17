@@ -71,8 +71,9 @@ def password_token(name: str, password: str) -> str:
                                200_000).hex()
 
 
-def set_password(name: str, password: str) -> None:
-    """Игрок ввёл пароль оффлайн-аккаунта (вход, регистрация, смена пароля) — ключ ника теперь из пароля."""
+def set_password(name: str, password: str, replace: bool = False) -> None:
+    """Игрок ввёл пароль оффлайн-аккаунта (вход, регистрация, смена пароля) — ключ ника теперь из пароля.
+    replace=True — пароль сменили: на сервере прежние ключи (и старый пароль) перестанут действовать."""
     with _lock:
         data = _tokens()
         key = name.lower()
@@ -82,6 +83,8 @@ def set_password(name: str, password: str) -> None:
             return
         if current and not data.get(key + ":old"):   # «:old» уже есть — прошлая замена ещё не дошла до сервера, бережём его
             data[key + ":old"] = protect(current)
+        if replace:
+            data[key + ":replace"] = True
         data[key] = protect(new)
         _save_tokens(data)
         _registered.discard(key)
@@ -133,7 +136,8 @@ def ensure_registered(name: str) -> str:
             return token
         data = _tokens()
         old = unprotect(data[key + ":old"]) if data.get(key + ":old") else ""
-        payload = {"name": name, "token": token, **({"old": old} if old and old != token else {})}
+        payload = {"name": name, "token": token, **({"old": old} if old and old != token else {}),
+                   **({"replace": True} if old and data.get(key + ":replace") else {})}
         try:
             _call("/api/register", payload)
         except SkinServerError as exc:
@@ -158,6 +162,7 @@ def ensure_registered(name: str) -> str:
         if old:                                # новый ключ принят — прежний больше не нужен
             data = _tokens()
             data.pop(key + ":old", None)
+            data.pop(key + ":replace", None)
             _save_tokens(data)
         _registered.add(key)
         return token
@@ -178,6 +183,69 @@ def _authed(name: str, path: str, payload: dict) -> dict:
             _active.pop(name.lower(), None)
         token = ensure_registered(name)
         return _call(path, {"name": name, "token": token, **payload})
+
+
+# ----------------------------------------------------------------------------- код восстановления, смена ника
+RECOVERY_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"   # без 0/O и 1/I — чтобы не путали при переписывании
+
+
+def make_recovery_code() -> str:
+    """16 знаков (80 бит), группами по 4: «K7XQ-2M9P-4HTR-8WVD»."""
+    raw = "".join(secrets.choice(RECOVERY_CHARS) for _ in range(16))
+    return "-".join(raw[i:i + 4] for i in range(0, 16, 4))
+
+
+def set_recovery(name: str, code: str) -> None:
+    """Запомнить на сервере новый код восстановления (сервер хранит только его хэш). Прежний код перестаёт действовать."""
+    _authed(name, "/api/recovery", {"code": code})
+
+
+def _store_token(name: str, token: str) -> None:
+    with _lock:
+        data = _tokens()
+        key = name.lower()
+        for suffix in ("", ":old", ":replace"):
+            data.pop(key + suffix, None)
+        data[key] = protect(token)
+        _save_tokens(data)
+        _registered.add(key)
+        _active.pop(key, None)
+
+
+def recover(name: str, code: str, password: str) -> None:
+    """Забыли пароль: код восстановления + новый пароль. На сервере у ника остаётся только новый ключ."""
+    token = password_token(name, password)
+    _call("/api/register", {"name": name, "token": token, "recovery": code})
+    _store_token(name, token)
+
+
+def rename(old: str, new: str, password: str) -> None:
+    """Смена ника на сервере: друзья, скин и код восстановления переезжают. Ключ нового ника — из пароля и нового ника."""
+    token = password_token(new, password)
+    _authed(old, "/api/rename", {"new": new, "newToken": token})
+    with _lock:
+        data = _tokens()
+        for suffix in ("", ":old", ":replace"):
+            data.pop(old.lower() + suffix, None)
+        _save_tokens(data)
+        _registered.discard(old.lower())
+        _active.pop(old.lower(), None)
+    _store_token(new, token)
+
+
+def download_skin(name: str) -> bytes:
+    """Скин ника с сервера VaultMC (PNG) или пусто, если его там нет."""
+    import urllib.request
+    url = server_url()
+    if not url:
+        return b""
+    req = urllib.request.Request(f"{url}/skins/{name}.png", headers={"User-Agent": "VaultMC"})
+    try:
+        with urllib.request.urlopen(req, timeout=8) as r:
+            data = r.read(512 * 1024)
+    except OSError:
+        return b""
+    return data if data.startswith(b"\x89PNG") else b""
 
 
 def upload(name: str, kind: str, png: bytes, slim: bool = False) -> None:

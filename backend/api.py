@@ -984,6 +984,79 @@ class Api:
         except AuthError as exc:
             return {"error": str(exc)}
         self._nick_key(acc, password)
+        return {**self._activated(acc), **self._new_recovery_code(acc)}
+
+    # ---- код восстановления и смена ника (оффлайн-аккаунт) ----
+    def _new_recovery_code(self, acc: Account) -> dict:
+        """Выдать новый код восстановления: {"recoveryCode": ...} или {"recoveryError": ...} (нет связи — получить позже)."""
+        from core import skinserver
+        if acc.kind != "offline" or not skinserver.server_url():
+            return {}
+        code = skinserver.make_recovery_code()
+        try:
+            skinserver.set_recovery(acc.username, code)
+        except Exception as exc:  # noqa: BLE001
+            return {"recoveryError": f"Код восстановления не получен: {exc}. Получите его позже в «Настройках»"}
+        return {"recoveryCode": code}
+
+    def recovery_code(self) -> dict:
+        acc = self._accounts.active
+        if acc is None or acc.kind != "offline":
+            return {"error": "Код восстановления — для оффлайн-аккаунта. Пароль Ely.by восстанавливается на сайте Ely.by"}
+        r = self._new_recovery_code(acc)
+        return {"code": r["recoveryCode"]} if "recoveryCode" in r else {"error": r.get("recoveryError", "Сервер VaultMC не настроен")}
+
+    def recover_offline(self, nick: str, code: str, password: str, repeat: str) -> dict:
+        """«Забыли пароль?»: ник + код восстановления + новый пароль. Работает и на новом ПК."""
+        from core import skinserver
+        from core.accounts import MIN_PASSWORD
+        from core.utils import NICKNAME_RE
+        if self._game_lock():
+            return {"error": GAME_LOCK_MSG}
+        nick = (nick or "").strip()
+        if not NICKNAME_RE.match(nick):
+            return {"error": "Ник: 3–16 символов, латиница, цифры и _"}
+        if len(password or "") < MIN_PASSWORD:
+            return {"error": f"Пароль должен быть не короче {MIN_PASSWORD} символов"}
+        if password != repeat:
+            return {"error": "Пароли не совпадают"}
+        try:
+            skinserver.recover(nick, code, password)
+            acc = self._accounts.reset_offline_password(nick, password, repeat)
+        except (skinserver.SkinServerError, AuthError) as exc:
+            return {"error": str(exc)}
+        return {**self._activated(acc), **self._new_recovery_code(acc)}   # прежний код погашен — сразу новый
+
+    def rename_account(self, new_nick: str, password: str) -> dict:
+        """Новый ник оффлайн-аккаунта: сначала на сервере VaultMC (друзья, скин), потом в лаунчере."""
+        from core import skinserver
+        from core.utils import NICKNAME_RE
+        acc = self._accounts.active
+        if acc is None or acc.kind != "offline":
+            return {"error": "Ник меняется только у оффлайн-аккаунта. Ник Ely.by — на сайте Ely.by"}
+        if self._game_lock():
+            return {"error": GAME_LOCK_MSG}
+        new_nick = (new_nick or "").strip()
+        if not NICKNAME_RE.match(new_nick):
+            return {"error": "Ник: 3–16 символов, латиница, цифры и _"}
+        if new_nick == acc.username:
+            return {"error": "Это ваш текущий ник"}
+        try:
+            self._accounts.check_password(acc.id, password)
+        except AuthError as exc:
+            return {"error": str(exc)}
+        if not skinserver.server_url():
+            return {"error": "Сервер VaultMC не настроен — ник сменить нельзя"}
+        other = self._accounts._find_offline(new_nick)
+        if other and other.id != acc.id:
+            return {"error": "На этом компьютере уже есть оффлайн-аккаунт с таким ником"}
+        old = acc.username
+        try:
+            skinserver.rename(old, new_nick, password)
+            self._accounts.rename_offline(acc.id, new_nick)
+        except (skinserver.SkinServerError, AuthError) as exc:
+            return {"error": str(exc)}
+        self._on_runner_event("log", f"[Аккаунт] ник {old} → {new_nick}")
         return self._activated(acc)
 
     def login_offline(self, nick: str, password: str) -> dict:
@@ -1101,13 +1174,34 @@ class Api:
         acc = self._accounts.active
         try:
             self._accounts.change_password(acc.id, old, new, repeat)
-            self._nick_key(acc, new)
+            try:   # replace — на сервере старый пароль перестаёт действовать (раньше оставался среди ключей ника)
+                from core import skinserver
+                skinserver.set_password(acc.username, new, replace=True)
+            except Exception as exc:  # noqa: BLE001
+                _log(f"nick key {acc.username}: {exc}")
             threading.Thread(target=self._claim_nick, args=(acc.username,), daemon=True).start()
             return {"ok": True}
         except (AuthError, AttributeError, KeyError) as exc:
             return {"error": str(exc)}
 
     # ---- скины ----
+    def _pull_offline_skin(self, acc: Account, dest: Path) -> None:
+        """Вошли с тем же ником на новом ПК: скина здесь нет, а на сервере VaultMC он есть — забираем.
+        Один раз за запуск на аккаунт, чтобы не спрашивать сервер при каждой отрисовке головы."""
+        tried = self.__dict__.setdefault("_skin_pulled", set())
+        if acc.id in tried:
+            return
+        tried.add(acc.id)
+        from core import skinserver
+        data = skinserver.download_skin(acc.username)
+        if data:
+            try:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(data)
+                self._on_runner_event("log", f"[Скины] скин {acc.username} взят с сервера VaultMC")
+            except OSError as exc:
+                _log(f"pull skin: {exc}")
+
     def get_skin(self, account_id: str = "") -> str:
         """Текстура скина (data:image/png) или "" — тогда интерфейс рисует свой силуэт."""
         acc = self._accounts.accounts.get(account_id) or self._accounts.active
@@ -1115,6 +1209,8 @@ class Api:
             return ""
         custom = SKINS_DIR / f"{acc.id}.png"
         if acc.kind == "offline":
+            if not custom.exists():
+                self._pull_offline_skin(acc, custom)
             return self._data_url(custom) if custom.exists() else ""
         cache = SKIN_CACHE / f"{acc.id}.png"
         if not cache.exists() or time.time() - cache.stat().st_mtime > 3600:
@@ -1316,6 +1412,7 @@ class Api:
             (SKINS_DIR / f"{acc.id}.png").unlink(missing_ok=True)
         except OSError as exc:
             return {"error": f"Не удалось удалить файл скина: {exc}"}
+        self.__dict__.setdefault("_skin_pulled", set()).add(acc.id)   # сброшенный скин не скачиваем обратно с сервера
         meta = self._skin_meta()
         if acc.id in meta:
             meta[acc.id] = {**meta[acc.id], "slim": False}
