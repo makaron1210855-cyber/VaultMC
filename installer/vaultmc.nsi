@@ -115,6 +115,11 @@ Section "VaultMC (обязательно)" SecMain
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\VaultMC.exe" "Path" "$INSTDIR\python"
   System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
   WriteRegStr HKCU "Software\Classes\Applications\VaultMC.exe\shell\open\command" "" '"$INSTDIR\python\VaultMC.exe" "$INSTDIR\app\main.py" "%1"'
+  ; ссылки vaultmc://pack/<код> — кнопка «Открыть в VaultMC» на странице сборки (site/pack.html)
+  WriteRegStr HKCU "Software\Classes\vaultmc" "" "URL:VaultMC"
+  WriteRegStr HKCU "Software\Classes\vaultmc" "URL Protocol" ""
+  WriteRegStr HKCU "Software\Classes\vaultmc\DefaultIcon" "" "$INSTDIR\app\assets\logo_win.ico"
+  WriteRegStr HKCU "Software\Classes\vaultmc\shell\open\command" "" '"$INSTDIR\python\VaultMC.exe" "$INSTDIR\app\main.py" "%1"'
   StrCpy $WantDesktop "0"
 SectionEnd
 
@@ -177,6 +182,7 @@ Section "Uninstall"
   RMDir "$INSTDIR"
   DeleteRegKey HKCU "${UNINST_KEY}"
   DeleteRegKey HKCU "Software\Classes\VaultMC.mrpack"
+  DeleteRegKey HKCU "Software\Classes\vaultmc"
   DeleteRegKey HKCU "Software\Classes\Applications\VaultMC.exe"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\VaultMC.exe"
   DeleteRegValue HKCU "Software\Classes\.mrpack\OpenWithProgids" "VaultMC.mrpack"

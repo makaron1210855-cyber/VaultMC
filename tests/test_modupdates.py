@@ -146,6 +146,9 @@ class VersionRangeTests(unittest.TestCase):
         self.assertTrue(version_matches("1.20.1", "*"))
         self.assertTrue(version_matches("1.20.1", ""))
         self.assertIsNone(version_matches("1.20.1", ">= ?? 1.2"))   # непонятная запись — не судим
+        self.assertIsNone(version_matches("1.20.1", "1.20.1-snapshot"))
+        self.assertIsNone(version_matches("1.21", ">=1.21-pre1"))
+        self.assertTrue(version_matches("1.20.1", ">=1.20-"), "дефис без букв — обычная запись Fabric")
 
 
 if __name__ == "__main__":

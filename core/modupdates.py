@@ -36,6 +36,7 @@ class ModUpdate:
     version: str         # номер новой версии (для показа)
     old_version: str = ""    # установленная версия (из самого файла или его названия)
     major: bool = False      # крупное обновление: номер версии «ломающе» вырос (2.x → 3.x, у 0.x — 0.5 → 0.6)
+    version_id: str = ""     # id версии (Modrinth) или файла (CurseForge) — для «Что нового»
 
 
 def core_version(text: str, game_version: str = "") -> tuple | None:
@@ -207,7 +208,7 @@ def check(game_dir: Path, game_version: str, loader: str, cf_key: str = "", log=
             updates.append(ModUpdate(path.name, _title(path, titles.get(plain)), "modrinth",
                                      version.get("project_id", ""), remote["filename"], remote["url"],
                                      remote.get("hashes", {}).get("sha1", ""), int(remote.get("size") or 0),
-                                     version.get("version_number", "")))
+                                     version.get("version_number", ""), version_id=str(version.get("id") or "")))
     except Exception as exc:  # noqa: BLE001
         log(f"[Обновления] Modrinth недоступен: {exc}")
 
@@ -239,7 +240,7 @@ def check(game_dir: Path, game_version: str, loader: str, cf_key: str = "", log=
                 updates.append(ModUpdate(path.name, _title(path, titles.get(plain)), "curseforge",
                                          str(match.get("id") or best.get("modId", "")), best["fileName"],
                                          best["downloadUrl"], sha1, int(best.get("fileLength") or 0),
-                                         best.get("displayName", "")))
+                                         best.get("displayName", ""), version_id=str(best.get("id") or "")))
         except Exception as exc:  # noqa: BLE001
             log(f"[Обновления] CurseForge недоступен: {exc}")
     skipped = skipped_updates(game_dir)
@@ -250,6 +251,39 @@ def check(game_dir: Path, game_version: str, loader: str, cf_key: str = "", log=
     except Exception as exc:  # noqa: BLE001 — пометка не должна ломать проверку обновлений
         log(f"[Обновления] не удалось определить крупные обновления: {exc}")
     return [asdict(u) for u in updates]
+
+
+_TAG = re.compile(r"<[^>]+>")
+_ID = re.compile(r"^[A-Za-z0-9]{1,40}$")
+CHANGELOG_MAX = 6000
+
+
+def _plain(text: str) -> str:
+    """HTML/Markdown списка изменений → простой текст для окна лаунчера."""
+    import html
+    text = re.sub(r"(?i)<br\s*/?>|</p>|</li>|</h\d>", "\n", text or "")
+    text = re.sub(r"(?i)<li[^>]*>", "• ", text)
+    text = html.unescape(_TAG.sub("", text))
+    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text)              # картинки Markdown
+    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)          # ссылки Markdown → текст
+    text = re.sub(r"(?m)^\s*[-*]\s+", "• ", text)
+    text = re.sub(r"(?m)^#+\s*", "", text).replace("**", "").replace("__", "")
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    return text[:CHANGELOG_MAX] + ("…" if len(text) > CHANGELOG_MAX else "")
+
+
+def changelog(source: str, project_id: str, version_id: str, cf_key: str = "") -> str:
+    """Что нового в версии мода. Пусто — автор ничего не написал."""
+    from .net import get_json
+    if not _ID.match(str(version_id or "")):
+        raise ValueError("нет номера версии")
+    if source == "modrinth":
+        return _plain(get_json(f"{MODRINTH_API}/version/{version_id}", timeout=12, attempts=2).get("changelog") or "")
+    if source == "curseforge" and cf_key and _ID.match(str(project_id or "")):
+        data = get_json(f"{CURSEFORGE_API}/mods/{project_id}/files/{version_id}/changelog",
+                        headers={"x-api-key": cf_key}, timeout=12, attempts=2)
+        return _plain(data.get("data") or "")
+    raise ValueError("источник не поддерживается")
 
 
 SKIP_FILE = ".vaultmc_skipped_updates.json"   # версии, от которых игрок откатился: их больше не предлагаем

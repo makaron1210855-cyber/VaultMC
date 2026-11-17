@@ -16,7 +16,9 @@ async function renderWorlds(body, inst) {
   if (!res || !body.isConnected) return;
   const others = S.instances.filter((i) => i.id !== inst.id);
   body.innerHTML = `
-    <div class="row" style="margin-bottom:10px"><div class="small muted grow">Миров: ${res.worlds.length}. Копии хранятся в папке сборки и не мешают игре.</div>
+    <div class="row" style="margin-bottom:10px"><div class="small muted grow">Миров: ${res.worlds.length}. Копии хранятся в папке сборки и не мешают игре.
+      ${res.auto ? 'После игры лаунчер сам делает копию миров, в которых вы играли (последние 5 на мир).' : 'Автокопии после игры выключены в настройках.'}
+      ${res.running ? '<br><b>Игра запущена</b> — копию сделать можно после выхода: открытый мир скопировался бы не целиком.' : ''}</div>
       <button class="btn sm ghost" data-a="folder">${ic('folder')} Папка миров</button>
       <button class="btn sm ghost" data-a="bfolder">${ic('archive')} Папка копий</button></div>
     <div class="list">${res.worlds.map((w) => `
@@ -24,27 +26,43 @@ async function renderWorlds(body, inst) {
         ${w.icon ? `<img class="world-ic" src="${w.icon}" alt="">` : `<div class="world-ic ph">${ic('world')}</div>`}
         <div class="grow"><div class="title">${esc(w.name)}</div>
           <div class="small faint">${[w.mode, w.version, fmtWhen(w.lastPlayed), fmtSize(w.size)].filter(Boolean).map(esc).join(' · ')}</div></div>
-        <button class="btn sm" data-a="backup" title="Сделать резервную копию">${ic('archive')} Копия</button>
+        <button class="btn sm" data-a="backup" title="Сделать резервную копию" ${res.running ? 'disabled' : ''}>${ic('archive')} Копия</button>
         ${others.length ? `<button class="btn sm ghost" data-a="move" title="Скопировать в другую сборку">${ic('copy')}</button>` : ''}
         <button class="btn sm danger" data-a="del" title="Удалить мир">${ic('trash')}</button></div>`).join('')
       || '<div class="empty"><b>Миров пока нет</b><span>Создайте мир в игре — он появится здесь.</span></div>'}</div>
     ${res.backups.length ? `<div class="spacer"></div><div class="h2">Резервные копии</div>
       <div class="list">${res.backups.map((b) => `
-        <div class="item" data-b="${esc(b.file)}"><div class="grow"><div class="title">${esc(b.file.replace(/\.zip$/, ''))}</div>
+        <div class="item" data-b="${esc(b.file)}"><div class="grow"><div class="title">${esc(b.file.replace(/\.zip$/, '').replace(' auto ', ' '))}
+            ${b.auto ? '<span class="chip">автокопия</span>' : ''}</div>
           <div class="small faint">${fmtWhen(b.date)} · ${fmtSize(b.size)}</div></div>
           <button class="btn sm" data-a="restore">${ic('refresh')} Восстановить</button>
-          <button class="btn sm danger" data-a="delb">${ic('trash')}</button></div>`).join('')}</div>` : ''}`;
+          <button class="btn sm danger" data-a="delb">${ic('trash')}</button></div>`).join('')}</div>` : ''}
+    ${res.trash.length ? `<div class="spacer"></div><div class="h2">Корзина</div>
+      <div class="small muted" style="margin-bottom:8px">Удалённые миры хранятся здесь 7 дней, потом стираются насовсем.</div>
+      <div class="list">${res.trash.map((t) => `
+        <div class="item" data-t="${esc(t.entry)}"><div class="grow"><div class="title">${esc(t.name)}</div>
+          <div class="small faint">удалён ${fmtWhen(t.date)} · ${fmtSize(t.size)} · сотрётся через ${t.left_days} дн.</div></div>
+          <button class="btn sm" data-a="untrash">${ic('refresh')} Вернуть</button>
+          <button class="btn sm danger" data-a="purge" title="Стереть насовсем">${ic('trash')}</button></div>`).join('')}</div>` : ''}`;
   hydrateIcons(body);
   body.onclick = async (e) => {
     const a = e.target.closest('[data-a]')?.dataset.a; if (!a) return;
     const w = e.target.closest('[data-w]')?.dataset.w;
     const b = e.target.closest('[data-b]')?.dataset.b;
+    const t = e.target.closest('[data-t]')?.dataset.t;
     const act = async (...args) => { const r = await safe(api.world_action(inst.id, ...args)); if (r && r.error) toast(r.error, 'error'); return r && !r.error ? r : null; };
     if (a === 'folder') return api.open_folder('saves', inst.id);
     if (a === 'bfolder') return api.open_folder('backups', inst.id);
     if (a === 'backup' && await act('backup', w)) toast('Делаю резервную копию...');
-    if (a === 'del' && await confirmDialog('Удалить мир?', `«${w}» удалится насовсем. Сначала можно сделать копию.`, 'Удалить', true)) {
-      if (await act('delete', w)) { toast('Мир удалён'); renderWorlds(body, inst); }
+    if (a === 'del' && await confirmDialog('Удалить мир?', `«${w}» попадёт в корзину: 7 дней его можно вернуть здесь же, потом он сотрётся насовсем.`, 'Удалить', true)) {
+      if (await act('delete', w)) { toast('Мир в корзине — вернуть можно внизу страницы'); renderWorlds(body, inst); }
+    }
+    if (a === 'untrash') {
+      const r = await act('trash_restore', t);
+      if (r) { toast(`Мир возвращён: «${r.folder}»`); renderWorlds(body, inst); }
+    }
+    if (a === 'purge' && await confirmDialog('Стереть мир насовсем?', 'Вернуть его будет нельзя.', 'Стереть', true)) {
+      if (await act('trash_delete', t)) renderWorlds(body, inst);
     }
     if (a === 'restore') {
       const r = await act('restore', b);
@@ -66,6 +84,9 @@ async function renderWorlds(body, inst) {
 onEvent('world_backup_done', (r) => {
   toast(`Копия сохранена: ${r.file}`);
   if (S.page === 'instance') refreshPage();
+});
+onEvent('world_autobackup', () => {
+  if (S.page === 'instance' && currentPageEl && currentPageEl.__tab === 'worlds') refreshPage();
 });
 
 /* ================================================================= серверы */

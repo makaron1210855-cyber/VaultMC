@@ -91,7 +91,7 @@ registerPage('instance', {
           <button class="btn danger" data-a="delete">${ic('trash')}</button>
         </div>
       </div>
-      ${segHtml('tab', [['mods', 'Моды'], ['packs', 'Ресурспаки и шейдеры'], ['worlds', 'Миры'], ['servers', 'Серверы'], ['shots', 'Скриншоты'], ['optimize', 'Оптимизация'], ['settings', 'Настройки']], el.__tab)}
+      ${segHtml('tab', [['mods', 'Моды'], ['packs', 'Ресурспаки и шейдеры'], ['worlds', 'Миры'], ['history', 'История'], ['servers', 'Серверы'], ['shots', 'Скриншоты'], ['optimize', 'Оптимизация'], ['settings', 'Настройки']], el.__tab)}
       <div class="spacer"></div><div id="tabBody"></div>`;
     S.config.selected_instance = inst.id;
     drawInstanceIcon($('.inst-head canvas', el), inst.name, inst.color, inst.icon);
@@ -106,7 +106,8 @@ registerPage('instance', {
       if (a === 'export') openExportMenu(e.target.closest('[data-a]'), inst);
       if (a === 'backup') {
         const r = await safe(api.backup_worlds(inst.id));
-        if (r) toast(r.path ? 'Бэкап миров: ' + r.path : 'В сборке пока нет миров', r.path ? 'info' : 'warn');
+        if (r && r.error) toast(r.error, 'warn', 7000);
+        else if (r) toast(r.path ? 'Бэкап миров: ' + r.path : 'В сборке пока нет миров', r.path ? 'info' : 'warn');
       }
       if (a === 'copy') { const c = await safe(api.duplicate_instance(inst.id)); if (c) { await reloadInstances(); toast('Создана копия сборки'); go('instance', { id: c.id }); } }
       if (a === 'delete' && await confirmDialog('Удалить сборку?', `«${inst.name}» будет удалена вместе с мирами и модами.`, 'Удалить', true)) {
@@ -122,6 +123,7 @@ async function renderTab(el, inst) {
   if (el.__tab === 'worlds') return renderWorlds(body, inst);
   if (el.__tab === 'servers') return renderServers(body, inst);
   if (el.__tab === 'shots') return renderShots(body, inst);
+  if (el.__tab === 'history') return renderHistory(body, inst);
   if (el.__tab === 'mods') {
     body.innerHTML = `<div class="row" style="margin-bottom:10px">
         <div class="search grow">${ic('search')}<input class="input" id="modFilter" placeholder="Фильтр модов"></div>
@@ -609,7 +611,8 @@ async function openModUpdates(inst, btn) {
       <div class="item" style="padding:8px 12px">${checkHtml('u' + n, '', !u.major)}
         <div class="grow"><div class="title">${esc(u.title)} ${u.major ? '<span class="chip sand">Крупное обновление</span>' : ''}</div>
           <div class="small faint">${esc(u.file.replace(/\.disabled$/, ''))} → ${esc(u.new_file)}</div>
-          ${u.major ? `<div class="small" style="margin-top:2px">Версия ${esc(u.old_version || '?')} → ${esc(u.version || '?')}: настройки могут не подойти новой версии.</div>` : ''}</div>
+          ${u.major ? `<div class="small" style="margin-top:2px">Версия ${esc(u.old_version || '?')} → ${esc(u.version || '?')}: настройки могут не подойти новой версии.</div>` : ''}
+          ${u.version_id ? `<button class="btn sm ghost upd-cl-btn" data-cl="${n}">${ic('file')} Что нового</button><div class="upd-cl small" hidden></div>` : ''}</div>
         <span class="chip">${u.source === 'modrinth' ? 'Modrinth' : 'CurseForge'}</span></div>`).join('')}</div>
     <div class="foot"><button class="btn ghost" data-close>Позже</button>
       <button class="btn primary" id="updGo">${ic('download')} Обновить выбранные</button></div>`, { wide: true });
@@ -617,6 +620,20 @@ async function openModUpdates(inst, btn) {
   m.addEventListener('change', (e) => {
     if (e.target.dataset.key === 'all') boxes().forEach((b) => (b.checked = e.target.checked));
     $('#updGo', m).disabled = !boxes().some((b) => b.checked);
+  });
+  // «Что нового»: список изменений версии подгружается только по клику (лишних запросов к Modrinth/CurseForge нет)
+  m.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-cl]');
+    if (!btn) return;
+    const box = btn.nextElementSibling;
+    if (!box.hidden) { box.hidden = true; return; }
+    box.hidden = false;
+    if (box.dataset.loaded) return;
+    const u = ups[+btn.dataset.cl];
+    box.textContent = 'Загружаю...';
+    const r = await api.mod_changelog(u.source, u.project_id, u.version_id).catch(() => null);
+    box.dataset.loaded = '1';
+    box.textContent = !r ? 'Нет связи' : r.error ? r.error : (r.text || 'Автор мода не написал, что изменилось');
   });
   $('#updGo', m).onclick = async () => {
     const chosen = ups.filter((_, n) => boxes()[n].checked);
@@ -789,46 +806,4 @@ async function openCompare(inst, fileA, fileB, onDone) {
     const res = await safe(api.crash_fix(inst.id, 'disable_mod', r.disable));
     if (res && res.ok) { toast(res.ok); m.close(); onDone && onDone(); } else { go1.disabled = false; if (res) toast(res.error, 'error'); }
   };
-}
-
-/* ---------------------------------------------------------------- сборка по коду */
-async function shareInstanceCode(inst) {
-  const m = openModal(`<h3>Код сборки «${esc(inst.name)}»</h3>
-    <div class="share-wait muted small">${ic('refresh')} Собираю список модов и загружаю на сервер...</div>`);
-  const r = await safe(api.share_instance(inst.id));
-  if (!m.isConnected) return;
-  if (!r || r.error) { m.close(); if (r?.error) toast(r.error, 'error', 6000); return; }
-  const manual = r.manual || [];
-  m.innerHTML = `<button class="btn ghost sm icon x" data-close>${ic('x')}</button>
-    <h3>Код сборки «${esc(inst.name)}»</h3>
-    <p class="muted small">Друг открывает «Сборки → По коду» и вводит этот код. Лаунчер сам поставит ту же версию игры, загрузчик${r.mods ? `, моды (${r.mods} шт. с Modrinth)` : ""} и настройки. Код работает 30 дней.</p>
-    <div class="share-code mono">${esc(r.code)}</div>
-    ${manual.length ? `<p class="note">${ic('alert')} Эти файлы не с Modrinth, в код они не входят — передайте их другу отдельно: <b>${manual.slice(0, 10).map(esc).join(', ')}${manual.length > 10 ? ` и ещё ${manual.length - 10}` : ''}</b></p>` : ''}
-    <div class="foot"><button class="btn ghost" data-close>Закрыть</button><button class="btn primary" id="scCopy">${ic('copy')} Скопировать код</button></div>`;
-  hydrateIcons(m);
-  m.querySelectorAll('[data-close]').forEach((b) => (b.onclick = m.close));
-  $('#scCopy', m).onclick = () => copyText(r.code);
-}
-
-function openImportByCode() {
-  const m = openModal(`<h3>Сборка по коду</h3>
-    <p class="muted small">Вставьте код из 6 символов, который прислал друг. Появится новая сборка с теми же модами и настройками.</p>
-    <label class="field"><span>Код</span><input class="input mono" id="bcCode" maxlength="8" placeholder="K7XQ2M" style="text-transform:uppercase;letter-spacing:3px;font-size:18px"></label>
-    <div class="foot"><button class="btn ghost" data-close>Отмена</button><button class="btn primary" id="bcGo">${ic('download')} Установить</button></div>`);
-  const input = $('#bcCode', m);
-  input.focus();
-  const go1 = async () => {
-    const code = input.value.trim();
-    if (!code) return toast('Введите код', 'warn');
-    $('#bcGo', m).disabled = true;
-    const r = await safe(api.import_by_code(code));
-    if (!m.isConnected) return;
-    $('#bcGo', m).disabled = false;
-    if (!r) return;
-    if (r.error) return toast(r.error, 'error', 6000);
-    m.close();
-    toast(`Устанавливаю «${r.name}» от ${r.by} — прогресс внизу`);
-  };
-  $('#bcGo', m).onclick = go1;
-  input.onkeydown = (e) => { if (e.key === 'Enter') go1(); };
 }

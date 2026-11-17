@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Сборка VaultMC</title>
+<meta name="description" content="Сборка Minecraft по ссылке: откройте её в лаунчере VaultMC — моды и настройки поставятся сами.">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#07090c">
+<link rel="icon" href="img/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@700;900&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+<style>
+/* Страница «сборка по ссылке»: та же тёмная сталь и алмазный голубой, что на главной */
+:root {
+  --void: #07090c; --slab: #0e1318; --seam: #1d2730; --ink: #eaf1f4; --dust: #8fa0ab;
+  --neon: #2fd3e6; --gold: #f2b63c; --err: #f06a6a;
+  --display: "Unbounded", "Arial Black", system-ui, sans-serif;
+  --body: "Golos Text", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: var(--void); color: var(--ink); font: 17px/1.6 var(--body);
+  display: grid; place-items: center; padding: 24px 16px;
+  background-image: radial-gradient(circle at 50% -10%, rgba(47, 211, 230, .12), transparent 55%); }
+a { color: var(--neon); }
+.brand { display: flex; align-items: center; gap: 10px; justify-content: center; margin-bottom: 22px;
+  font: 900 18px var(--display); letter-spacing: .5px; color: var(--ink); text-decoration: none; }
+.brand img { width: 34px; height: 34px; image-rendering: pixelated; }
+.card { width: min(560px, 100%); background: var(--slab); border: 1px solid var(--seam); padding: 30px 28px; border-radius: 4px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .45); }
+.kicker { font: 700 12px var(--mono); letter-spacing: 2px; text-transform: uppercase; color: var(--gold); }
+h1 { font: 900 clamp(24px, 6vw, 32px)/1.15 var(--display); margin: 8px 0 12px; word-break: break-word; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+.meta span { padding: 4px 10px; border: 1px solid var(--seam); font-size: 14px; color: var(--dust); }
+.meta b { color: var(--ink); font-weight: 600; }
+.btns { display: flex; flex-wrap: wrap; gap: 12px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 15px 22px; border: 0; cursor: pointer;
+  font: 700 16px var(--body); color: #031418; background: var(--neon); text-decoration: none; flex: 1 1 200px;
+  clip-path: polygon(0 6px, 6px 6px, 6px 0, calc(100% - 6px) 0, calc(100% - 6px) 6px, 100% 6px, 100% calc(100% - 6px), calc(100% - 6px) calc(100% - 6px), calc(100% - 6px) 100%, 6px 100%, 6px calc(100% - 6px), 0 calc(100% - 6px));
+  transition: filter .2s, transform .15s; }
+.btn:hover { filter: brightness(1.1); transform: translateY(-2px); }
+.btn.ghost { background: #151c23; color: var(--ink); box-shadow: inset 0 0 0 2px var(--seam); }
+.hint { margin: 22px 0 0; padding-top: 18px; border-top: 1px solid var(--seam); color: var(--dust); font-size: 15px; }
+.code { display: inline-flex; align-items: center; gap: 8px; font: 700 18px var(--mono); letter-spacing: 3px; color: var(--ink);
+  background: #151c23; padding: 4px 10px; border: 1px solid var(--seam); cursor: pointer; }
+.code small { font: 600 12px var(--body); letter-spacing: 0; color: var(--dust); }
+.error h1 { color: var(--err); }
+.muted { color: var(--dust); }
+:focus-visible { outline: 3px solid var(--neon); outline-offset: 3px; }
+</style>
+</head>
+<body>
+<main>
+  <a class="brand" href="./"><img src="img/logo.png" alt="">VAULTMC</a>
+  <div class="card" id="card">
+    <div class="kicker">Сборка по ссылке</div>
+    <h1 id="title">Загружаю сборку...</h1>
+    <div class="meta" id="meta"></div>
+    <div class="btns" id="btns" hidden>
+      <a class="btn" id="open" href="#">Открыть в VaultMC</a>
+      <a class="btn ghost" href="VaultMC-Setup.exe">Скачать VaultMC</a>
+    </div>
+    <p class="hint" id="hint" hidden></p>
+  </div>
+</main>
+<script>
+(() => {
+  const SERVER = 'https://vaultmc-skins.vaultmc.workers.dev';
+  const code = (location.hash || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  const $ = (id) => document.getElementById(id);
+  const text = (el, t) => { el.textContent = t; };
+  const fail = (title, why) => {
+    $('card').classList.add('error');
+    text($('title'), title);
+    $('hint').hidden = false;
+    $('hint').innerHTML = '';
+    $('hint').append(why, ' ');
+    const home = document.createElement('a');
+    home.href = './'; home.textContent = 'Что такое VaultMC';
+    $('hint').append(home);
+  };
+  const loaders = { fabric: 'Fabric', forge: 'Forge', neoforge: 'NeoForge', quilt: 'Quilt', vanilla: 'Без модов' };
+
+  if (code.length !== 6) return fail('Ссылка неполная', 'В ссылке нет кода сборки — попросите друга прислать её ещё раз.');
+  $('open').href = 'vaultmc://pack/' + code;
+
+  fetch(`${SERVER}/api/share/${code}?brief=1`)
+    .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
+    .then(({ ok, d }) => {
+      if (!ok || !d.ok) return fail('Сборка не найдена', d.error || 'Код устарел — коды сборок живут 30 дней. Попросите у друга новую ссылку.');
+      document.title = `${d.name || 'Сборка'} — VaultMC`;
+      text($('title'), d.name || 'Сборка без названия');
+      const meta = $('meta');
+      const add = (label, value) => {
+        const s = document.createElement('span');
+        s.append(label + ' ');
+        const b = document.createElement('b'); b.textContent = value; s.append(b);
+        meta.append(s);
+      };
+      if (d.game_version) add('Minecraft', d.game_version);
+      if (d.loader) add('Загрузчик', loaders[d.loader] || d.loader);
+      add('Модов', String(d.mods || 0));
+      if (d.by) add('Собрал', d.by);
+      $('btns').hidden = false;
+      const hint = $('hint');
+      hint.hidden = false;
+      hint.append('«Открыть в VaultMC» — лаунчер сам создаст сборку с теми же модами и настройками. Ничего не открылось? Установите или обновите VaultMC и нажмите ещё раз, либо вставьте код ');
+      const c = document.createElement('span');
+      c.className = 'code'; c.title = 'Скопировать код';
+      c.append(code);
+      const sm = document.createElement('small'); sm.textContent = 'копировать'; c.append(sm);
+      c.onclick = () => navigator.clipboard && navigator.clipboard.writeText(code).then(() => { sm.textContent = 'скопирован'; });
+      hint.append(c, ' в лаунчере: «Сборки» → «По коду».');
+    })
+    .catch(() => fail('Нет связи с сервером VaultMC', 'Проверьте интернет и обновите страницу.'));
+})();
+</script>
+</body>
+</html>

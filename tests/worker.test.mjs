@@ -178,6 +178,22 @@ test('данные ретранслятора проходят в комнату
   assert.deepEqual(list.data.status.Host_1.relay, relay);
 });
 
+test('краткие сведения о сборке для страницы сайта: без файлов, с CORS', async () => {
+  const e = env();
+  await reg(e, 'Maker_1', TOKEN_A);
+  const pack = { name: 'Мои моды', loader: 'fabric', game_version: '1.20.1', overrides: 'SECRETDATA',
+    index: { files: [{ path: 'mods/sodium.jar' }, { path: 'mods/iris.jar' }, { path: 'resourcepacks/x.zip' }] } };
+  const sh = await post(e, '/api/share', { ...as('Maker_1', TOKEN_A), pack });
+  const res = await worker.fetch(new Request(`https://x.test/api/share/${sh.data.code}?brief=1`), e);
+  assert.equal(res.headers.get('access-control-allow-origin'), '*');
+  const d = await res.json();
+  assert.deepEqual([d.name, d.loader, d.game_version, d.mods, d.by], ['Мои моды', 'fabric', '1.20.1', 2, 'Maker_1']);
+  assert.ok(!JSON.stringify(d).includes('SECRETDATA'));
+  const miss = await worker.fetch(new Request('https://x.test/api/share/ZZZZZZ?brief=1'), e);
+  assert.equal(miss.status, 404);
+  assert.equal(miss.headers.get('access-control-allow-origin'), '*');
+});
+
 test('неверный ключ не открывает комнату (403)', async () => {
   const e = env();
   await reg(e, 'Host_1', TOKEN_A);

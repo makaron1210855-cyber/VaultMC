@@ -51,6 +51,7 @@ class LauncherConfig:
     hide_launcher: bool = False          # больше не используется (лаунчер в игре не прячется)
     skins_in_game: bool = True           # CustomSkinLoader + сервер скинов в сборках с модами
     show_online: bool = True             # друзья видят, что я в сети и во что играю
+    auto_world_backups: bool = True      # после игры копировать миры, в которых играли (5 автокопий на мир)
     download_threads: int = 32
     demo_mode: bool = False
     shortcut_offered: bool = False

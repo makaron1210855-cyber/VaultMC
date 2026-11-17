@@ -124,6 +124,12 @@ body::after {   /* тонкая светящаяся линия под верх�
 .net-chip.on { display: inline-flex; }
 .net-chip i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 .net-chip.good { color: var(--ok); } .net-chip.mid { color: var(--warn); } .net-chip.bad { color: var(--err); }
+/* история сборки (web/js/pages/history.js) и «Что нового» в обновлениях модов */
+.hist-item { align-items: flex-start; }
+.hist-list { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; line-height: 1.6; color: var(--muted, #9aa3b2); max-height: 220px; overflow: auto; }
+.hist-list b { color: var(--text, #e6e9ef); font-weight: 700; }
+.upd-cl-btn { margin-top: 4px; }
+.upd-cl { margin-top: 6px; padding: 8px 10px; border-radius: 10px; background: var(--panel3); white-space: pre-wrap; max-height: 200px; overflow: auto; line-height: 1.5; }
 .tb-online:hover { background: rgba(43, 212, 107, .14); }
 
 .win-buttons { display: flex; margin-left: 2px; }

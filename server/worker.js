@@ -64,7 +64,7 @@ export default {
         if (ct) return cslTexture(env, ct[1], ct[2] === 's' ? 'skin' : 'cape', ct[3]);
         if (path === '/api/status' || path === '/') return json({ ok: true, service: 'VaultMC skins', version: 6 });
         const sh = path.match(/^\/api\/share\/([A-Z0-9]{6})$/);
-        if (sh) return getShare(env, sh[1]);
+        if (sh) return url.searchParams.has('brief') ? shareBrief(env, sh[1]) : getShare(env, sh[1]);
         const rm = path.match(/^\/api\/room\/([A-Za-z0-9]{6})$/);
         if (rm) return social(env, { op: 'getRoom', ip, code: rm[1].toUpperCase() });
         return new Response('Not found', { status: 404 });
@@ -279,6 +279,21 @@ async function getShare(env, code) {
   const data = await env.SKINS.get('share:' + code, 'json');
   if (!data) return json({ error: 'Код не найден или устарел (коды живут 30 дней)' }, 404);
   return json({ ok: true, ...data });
+}
+
+// Для страницы сайта pack.html#КОД: только название, версия, загрузчик и число модов (без файлов сборки).
+// Страница на другом адресе (сайт VaultMC), поэтому ответ разрешён любому сайту (CORS).
+async function shareBrief(env, code) {
+  const data = await env.SKINS.get('share:' + code, 'json');
+  const cors = (res) => { res.headers.set('access-control-allow-origin', '*'); return res; };
+  if (!data || !data.pack) return cors(json({ error: 'Код не найден или устарел (коды живут 30 дней)' }, 404));
+  const p = data.pack;
+  const files = Array.isArray(p.index && p.index.files) ? p.index.files : [];
+  return cors(json({
+    ok: true, name: String(p.name || '').slice(0, 80), loader: String(p.loader || '').slice(0, 20),
+    game_version: String(p.game_version || '').slice(0, 30), by: String(data.by || '').slice(0, 16),
+    mods: files.filter((f) => /^mods\//.test(String(f.path || ''))).length, at: data.at || 0,
+  }));
 }
 
 /* ---------------------------------------------------------------- ретранслятор TURN (Cloudflare) */

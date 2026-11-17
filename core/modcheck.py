@@ -203,6 +203,8 @@ def version_matches(game: str, rng: str) -> bool | None:
             op, ver = m.group(1) or "=", m.group(2)
             if re.search(r"[a-z]", ver.split("-")[0].replace("x", ""), re.I) and not ver.endswith((".x", ".*")):
                 return None   # снапшоты и прочее — не судим
+            if "-" in ver and re.search(r"[a-z]", ver.split("-", 1)[1], re.I):
+                return None   # «1.21-pre1», «1.20.1-snapshot», «1.21-rc1» — пред-версии тоже не судим
             if ver.endswith((".x", ".*")) or ver in ("x", "*"):
                 prefix = _vt(ver.rstrip(".x*").rstrip(".")) if ver not in ("x", "*") else ()
                 n = len(re.findall(r"\d+", ver))

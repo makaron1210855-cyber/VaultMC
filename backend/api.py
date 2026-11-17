@@ -530,9 +530,32 @@ class Api:
         if acc_id:
             self._accounts.record_session(acc_id, info["seconds"], inst.name if inst else "")
         self._room_address = ""
+        if inst and self._cfg.auto_world_backups:
+            self._auto_world_backups(inst)
         if info.get("code") not in (0, None) and not info.get("killed"):
             info["instance"] = inst.id if inst else ""
             info["analysis"] = self._analyze_crash(info, inst)
+
+    def _auto_world_backups(self, inst) -> None:
+        """После выхода из игры — в фоне копируем миры, в которых играли (по 5 автокопий на мир)."""
+        from core import worlds as W
+        log = lambda m: self._on_runner_event("log", m)   # noqa: E731
+
+        def job():
+            for _ in range(40):          # событие выхода приходит чуть раньше, чем лаунчер отметит «игра закрыта»
+                if not self._instance_running(inst.id):
+                    break
+                time.sleep(0.5)
+            try:
+                done = W.auto_backup_changed(inst.game_dir, inst.root / "backups",
+                                             lambda: not self._instance_running(inst.id), log)
+            except Exception as exc:  # noqa: BLE001  копии — не повод мешать игроку
+                log(f"[Миры] автокопии: {exc}")
+                return
+            if done:
+                log(f"[Миры] автокопия: {', '.join(done)}")
+                self._emit("world_autobackup", {"instance": inst.id, "worlds": done})
+        threading.Thread(target=job, daemon=True).start()
 
     def _analyze_crash(self, info: dict, inst: Instance | None) -> list:
         from core.crash import analyze
@@ -635,6 +658,7 @@ class Api:
         if self._runner.state == "running" and self._running_instance == inst.id:
             return {"error": "Сначала закройте игру"}
         wanted = set(map(str, ids or []))
+        self._auto_snapshot(inst, "Перед «Починкой»")
         items = repair.scan(inst.game_dir, inst.mods_dir, inst.loader, inst.game_version, inst.ram_gb or self._cfg.ram_gb,
                             compat=inst.compat)
         done, failed, skipped = [], [], []
@@ -1531,6 +1555,8 @@ class Api:
         return _instance_dict(self._instances.duplicate(self._inst(instance_id)), self._repo.game_dir)
 
     def backup_worlds(self, instance_id: str) -> dict:
+        if self._instance_running(instance_id):
+            return {"error": "Закройте игру — мир может быть открыт, и копия получилась бы неполной"}
         path = self._instances.backup_worlds(self._inst(instance_id))
         return {"path": str(path) if path else ""}
 
@@ -1565,6 +1591,9 @@ class Api:
             OPEN_PACK_FILE.unlink(missing_ok=True)
         except OSError:
             return {}
+        code = re.fullmatch(r"code:([A-Z0-9]{6})", path or "")
+        if code:                       # ссылка на сборку с сайта — окно покажет «Сборка по коду» с этим кодом
+            return {"code": code.group(1)}
         if not path or not Path(path).is_file():
             return {}
         return self.import_file(path)
@@ -1647,13 +1676,18 @@ class Api:
     def worlds(self, instance_id: str) -> dict:
         from core import worlds as W
         inst = self._inst(instance_id)
-        return {"worlds": W.list_worlds(inst.game_dir), "backups": W.list_backups(inst.root / "backups")}
+        W.purge_trash(inst.root / "trash")      # миры старше недели из корзины удаляются насовсем
+        return {"worlds": W.list_worlds(inst.game_dir), "backups": W.list_backups(inst.root / "backups"),
+                "trash": W.list_trash(inst.root / "trash"), "running": self._instance_running(instance_id),
+                "auto": self._cfg.auto_world_backups}
 
     def world_action(self, instance_id: str, action: str, arg: str = "", target: str = "") -> dict:
         from core import worlds as W
         inst = self._inst(instance_id)
-        if self._runner.state == "running" and self._running_instance == inst.id and action in ("restore", "delete"):
-            return {"error": "Закройте игру — мир сейчас открыт"}
+        if self._instance_running(inst.id) and action in ("restore", "delete", "backup", "trash_restore"):
+            # копия открытого мира может оказаться битой: игра как раз может записывать его файлы
+            return {"error": "Закройте игру — мир может быть открыт, и копия получилась бы неполной"
+                    if action == "backup" else "Закройте игру — мир сейчас открыт"}
         try:
             if action == "backup":
                 started = self._runner.run_task(
@@ -1666,8 +1700,12 @@ class Api:
             if action == "copy":
                 dest = self._inst(target)
                 return {"ok": True, "folder": W.copy_world(inst.game_dir, arg, dest.game_dir), "target": dest.name}
-            if action == "delete":
-                W.delete_world(inst.game_dir, arg)
+            if action == "delete":            # мир уходит в корзину на 7 дней, а не стирается
+                return {"ok": True, "entry": W.trash_world(inst.game_dir, arg, inst.root / "trash")}
+            if action == "trash_restore":
+                return {"ok": True, "folder": W.restore_trash(inst.game_dir, inst.root / "trash", arg)}
+            if action == "trash_delete":
+                W.delete_trash(inst.root / "trash", arg)
                 return {"ok": True}
             if action == "delete_backup":
                 (inst.root / "backups" / Path(arg).name).unlink(missing_ok=True)
@@ -1777,11 +1815,20 @@ class Api:
     def apply_mod_updates(self, instance_id: str, updates: list) -> dict:
         from core.modupdates import apply
         inst = self._inst(instance_id)
-        started = self._runner.run_task(
-            f"Обновление модов ({len(updates)})...",
-            lambda: {"instance": inst.id, "result": apply(inst.game_dir, updates, lambda m: self._on_runner_event("log", m))},
-            "mods_updated")
+
+        def job():
+            self._auto_snapshot(inst, f"Перед обновлением модов ({len(updates)})")
+            return {"instance": inst.id, "result": apply(inst.game_dir, updates, lambda m: self._on_runner_event("log", m))}
+        started = self._runner.run_task(f"Обновление модов ({len(updates)})...", job, "mods_updated")
         return {"ok": started} if started else {"error": "Дождитесь окончания текущей операции"}
+
+    def mod_changelog(self, source: str, project_id: str, version_id: str) -> dict:
+        """«Что нового» в версии мода — текст с Modrinth или CurseForge (подгружается по клику)."""
+        from core.modupdates import changelog
+        try:
+            return {"text": changelog(source, project_id, version_id, self._cf_key)}
+        except Exception as exc:  # noqa: BLE001
+            return {"error": f"Не удалось загрузить список изменений: {exc}"}
 
     def mod_backups(self, instance_id: str) -> list:
         """Старые версии модов (после обновлений), к которым можно откатиться."""
@@ -1794,11 +1841,57 @@ class Api:
         inst = self._inst(instance_id)
         if self._runner.busy:
             return {"error": "Дождитесь окончания текущей операции"}
+        self._auto_snapshot(inst, "Перед откатом мода")
         try:
             title = rollback(inst.game_dir, str(backup_id))
         except (ValueError, OSError) as exc:
             return {"error": str(exc)}
         return {"ok": True, "title": title}
+
+    # ---- снимки сборки (core/snapshots.py): точки, к которым можно вернуть моды и настройки ----
+    def _auto_snapshot(self, inst, reason: str) -> None:
+        """Снимок перед рискованным действием. Не вышло (диск, занятый файл) — действие всё равно выполняется."""
+        from core import snapshots
+        try:
+            snapshots.create(inst.root, inst.game_dir, reason)
+        except Exception as exc:  # noqa: BLE001
+            self._on_runner_event("log", f"[Снимки] не удалось сохранить точку «{reason}»: {exc}")
+
+    def snapshots(self, instance_id: str) -> dict:
+        from core import snapshots
+        inst = self._inst(instance_id)
+        try:
+            pending = snapshots.pending_changes(inst.root, inst.game_dir)
+        except OSError:
+            pending = None
+        return {"items": snapshots.history(inst.root), "pending": pending,
+                "running": self._instance_running(instance_id)}
+
+    def snapshot_create(self, instance_id: str, note: str = "") -> dict:
+        from core import snapshots
+        inst = self._inst(instance_id)
+        reason = (str(note).strip() or "Точка, сохранённая вручную")[:120]
+        started = self._runner.run_task("Сохраняю точку сборки...",
+                                        lambda: {"instance": inst.id, **snapshots.create(inst.root, inst.game_dir, reason)},
+                                        "snapshot_done")
+        return {"ok": started} if started else {"error": "Дождитесь окончания текущей операции"}
+
+    def snapshot_restore(self, instance_id: str, snap_id: str) -> dict:
+        from core import snapshots
+        inst = self._inst(instance_id)
+        if self._instance_running(instance_id):
+            return {"error": "Закройте игру — пока она открыта, файлы модов заняты"}
+        started = self._runner.run_task("Возвращаю сборку к точке...",
+                                        lambda: {"instance": inst.id, **snapshots.restore(inst.root, inst.game_dir, str(snap_id))},
+                                        "snapshot_restored")
+        return {"ok": started} if started else {"error": "Дождитесь окончания текущей операции"}
+
+    def snapshot_delete(self, instance_id: str, snap_id: str) -> dict:
+        from core import snapshots
+        if self._runner.busy:
+            return {"error": "Дождитесь окончания текущей операции"}
+        snapshots.delete(self._inst(instance_id).root, str(snap_id))
+        return {"ok": True}
 
     def delete_mod(self, instance_id: str, filename: str) -> list:
         manager = ModManager(self._inst(instance_id).game_dir)
@@ -1885,6 +1978,7 @@ class Api:
             return {"error": "Закройте игру, потом обновляйте"}
 
         def job():
+            self._auto_snapshot(inst, f"Перед обновлением ресурспаков и шейдеров ({len(updates)})")
             done, errors = 0, []
             for kind in ("resourcepack", "shader"):
                 mine = [u for u in updates if isinstance(u, dict) and u.get("kind") == kind]

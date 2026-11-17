@@ -473,13 +473,17 @@ def main() -> None:
         return
     # двойной щелчок по .mrpack: запоминаем путь — запущенный лаунчер сам заберёт его (см. Api._open_pack_loop)
     pack_arg = next((a for a in sys.argv[1:] if a.lower().endswith(".mrpack") and os.path.isfile(a)), "")
-    if pack_arg:
+    # ссылка на сборку с сайта (pack.html → «Открыть в VaultMC»): vaultmc://pack/K7XQ2M
+    import re
+    link = next((m for m in (re.match(r"(?i)^vaultmc://pack/([a-z0-9]{6})/?$", a) for a in sys.argv[1:]) if m), None)
+    open_value = os.path.abspath(pack_arg) if pack_arg else f"code:{link.group(1).upper()}" if link else ""
+    if open_value:
         from core.utils import LAUNCHER_HOME
         try:
             LAUNCHER_HOME.mkdir(parents=True, exist_ok=True)
-            (LAUNCHER_HOME / "open_pack.txt").write_text(os.path.abspath(pack_arg), encoding="utf-8")
+            (LAUNCHER_HOME / "open_pack.txt").write_text(open_value, encoding="utf-8")
         except OSError as exc:
-            trace(f"не записал путь к сборке: {exc}")
+            trace(f"не записал сборку для открытия: {exc}")
     if "--dev" not in sys.argv and "--browser" not in sys.argv and "--webview-child" not in sys.argv:
         if ping_running_window():                     # окно уже открыто — просто показываем его, вторую копию не запускаем
             trace("окно лаунчера уже открыто — поднимаю его, вторую копию не запускаю")

@@ -207,7 +207,8 @@ onEvent('open_pack', () => openPackFile());
 // сборка из проводника (двойной щелчок по .mrpack): лаунчер сам запускает импорт
 async function openPackFile() {
   const r = await safe(api.take_open_pack());
-  if (r && r.started) toast('Импортирую сборку — прогресс внизу');
+  if (r && r.code) openImportByCode(r.code);           // ссылка на сборку с сайта (vaultmc://pack/КОД)
+  else if (r && r.started) toast('Импортирую сборку — прогресс внизу');
   else if (r && r.error) toast(r.error, 'error');
 }
 onEvent('mods_synced', (instanceId) => {

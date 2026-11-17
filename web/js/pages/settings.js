@@ -75,6 +75,7 @@ registerPage('settings', {
           <button class="btn" data-a="openData">${ic('folder')}</button></div></label>
         <label class="field"><span>Потоков загрузки: <b id="thrVal">${c.download_threads}</b></span><input type="range" min="4" max="64" value="${c.download_threads}" data-key="download_threads"></label>
         ${switchHtml('show_online', 'Показывать друзьям, что я в сети', 'Друзья VaultMC видят «в сети» / «играет в …» и могут зайти в вашу комнату', c.show_online)}
+        ${switchHtml('auto_world_backups', 'Автокопии миров', 'После игры лаунчер копирует миры, в которых вы играли (5 последних копий на мир, миры больше 2 ГБ — только вручную)', c.auto_world_backups)}
         ${switchHtml('skins_in_game', 'Скины друзей в игре', 'Лаунчер ставит CustomSkinLoader в сборки с модами — все видят скины из мастерской', c.skins_in_game)}
         ${switchHtml('demo_mode', 'Режим имитации', 'Собрать команду запуска, но не запускать игру (для проверки)', c.demo_mode)}
         <div class="row" style="margin-top:10px"><button class="btn" data-a="shortcut">${ic('star')} Ярлык на рабочем столе</button>

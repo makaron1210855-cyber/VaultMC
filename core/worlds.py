@@ -14,6 +14,7 @@ import base64
 import gzip
 import io
 import json
+import os
 import re
 import shutil
 import socket
@@ -146,25 +147,36 @@ def _world_dir(game_dir: Path, folder: str) -> Path:
     return path
 
 
-def backup_world(game_dir: Path, folder: str, backups_dir: Path) -> Path:
+AUTO_TAG = " auto "      # «Мир auto 2026-11-17 10-00-00.zip» — автокопия после игры (их хранится меньше)
+
+
+def backup_world(game_dir: Path, folder: str, backups_dir: Path, auto: bool = False) -> Path:
     src = _world_dir(game_dir, folder)
     backups_dir.mkdir(parents=True, exist_ok=True)
-    dest = backups_dir / f"{src.name} {time.strftime('%Y-%m-%d %H-%M-%S')}.zip"
-    with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED, compresslevel=5) as zf:
-        for f in src.rglob("*"):
-            if f.is_file() and f.name != "session.lock":
-                zf.write(f, f"{src.name}/{f.relative_to(src).as_posix()}")
-    _prune_backups(backups_dir, src.name)
+    dest = backups_dir / f"{src.name}{AUTO_TAG if auto else ' '}{time.strftime('%Y-%m-%d %H-%M-%S')}.zip"
+    tmp = dest.with_suffix(".part")
+    try:
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED, compresslevel=5) as zf:
+            for f in src.rglob("*"):
+                if f.is_file() and f.name != "session.lock":
+                    zf.write(f, f"{src.name}/{f.relative_to(src).as_posix()}")
+        os.replace(tmp, dest)            # недописанная копия (выключили ПК) не выглядит как целая
+    finally:
+        tmp.unlink(missing_ok=True)
+    _prune_backups(backups_dir, src.name, auto)
     return dest
 
 
 BACKUPS_PER_WORLD = 15   # старые копии одного мира сверх этого числа удаляются (чтобы папка не росла без конца)
+AUTO_PER_WORLD = 5       # автокопий одного мира
+AUTO_MAX_BYTES = 2 << 30 # миры больше 2 ГБ автоматически не копируются (долго и много места)
 
 
-def _prune_backups(backups_dir: Path, world: str) -> None:
-    pattern = re.compile(re.escape(world) + r" \d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\.zip")
+def _prune_backups(backups_dir: Path, world: str, auto: bool = False) -> None:
+    tag = re.escape(AUTO_TAG) if auto else " "
+    pattern = re.compile(re.escape(world) + tag + r"\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\.zip")
     mine = sorted((f for f in backups_dir.glob("*.zip") if pattern.fullmatch(f.name)), key=lambda f: f.stat().st_mtime)
-    for old in mine[:-BACKUPS_PER_WORLD]:
+    for old in mine[:-(AUTO_PER_WORLD if auto else BACKUPS_PER_WORLD)]:
         try:
             old.unlink()
         except OSError:
@@ -174,9 +186,99 @@ def _prune_backups(backups_dir: Path, world: str) -> None:
 def list_backups(backups_dir: Path) -> list[dict]:
     if not backups_dir.is_dir():
         return []
-    items = [{"file": f.name, "size": f.stat().st_size, "date": f.stat().st_mtime}
+    items = [{"file": f.name, "size": f.stat().st_size, "date": f.stat().st_mtime, "auto": AUTO_TAG in f.name}
              for f in backups_dir.glob("*.zip")]
     return sorted(items, key=lambda b: b["date"], reverse=True)
+
+
+def auto_backup_changed(game_dir: Path, backups_dir: Path, still_ok=lambda: True, log=print) -> list[str]:
+    """После выхода из игры: копируем миры, в которых играли с прошлой автокопии (по времени level.dat).
+    still_ok() — можно ли продолжать (игру снова запустили — останавливаемся). Возвращает имена скопированных миров."""
+    state_path = backups_dir / "auto_state.json"
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        state = {}
+    done = []
+    saves = game_dir / "saves"
+    for world in sorted(saves.iterdir()) if saves.is_dir() else []:
+        level = world / "level.dat"
+        if not level.is_file():
+            continue
+        stamp = level.stat().st_mtime
+        if stamp <= state.get(world.name, 0):
+            continue
+        if not still_ok():
+            break
+        if _dir_size(world) > AUTO_MAX_BYTES:
+            log(f"[Миры] «{world.name}» больше 2 ГБ — автокопию не делаю, сделайте копию вручную")
+            state[world.name] = stamp
+            continue
+        try:
+            backup_world(game_dir, world.name, backups_dir, auto=True)
+            state[world.name] = stamp
+            done.append(world.name)
+        except OSError as exc:
+            log(f"[Миры] автокопия «{world.name}» не получилась: {exc}")
+    if done or state:
+        backups_dir.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+    return done
+
+
+# ---------------------------------------------------------------- корзина миров
+TRASH_DAYS = 7
+_TRASH_RE = re.compile(r"^(?P<name>.+) (?P<date>\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2})$")
+
+
+def trash_world(game_dir: Path, folder: str, trash_dir: Path) -> str:
+    """Удалить мир: он не стирается, а уходит в корзину сборки на TRASH_DAYS дней."""
+    src = _world_dir(game_dir, folder)
+    trash_dir.mkdir(parents=True, exist_ok=True)
+    dest = trash_dir / f"{src.name} {time.strftime('%Y-%m-%d %H-%M-%S')}"
+    shutil.move(str(src), str(dest))
+    return dest.name
+
+
+def list_trash(trash_dir: Path) -> list[dict]:
+    if not trash_dir.is_dir():
+        return []
+    out = []
+    for d in trash_dir.iterdir():
+        m = _TRASH_RE.match(d.name)
+        if d.is_dir() and m:
+            at = d.stat().st_mtime
+            try:
+                at = time.mktime(time.strptime(m["date"], "%Y-%m-%d %H-%M-%S"))
+            except ValueError:
+                pass
+            out.append({"entry": d.name, "name": m["name"], "date": at, "size": _dir_size(d),
+                        "left_days": max(0, TRASH_DAYS - int((time.time() - at) // 86400))})
+    return sorted(out, key=lambda t: t["date"], reverse=True)
+
+
+def purge_trash(trash_dir: Path, days: int = TRASH_DAYS) -> None:
+    for t in list_trash(trash_dir):
+        if time.time() - t["date"] > days * 86400:
+            shutil.rmtree(trash_dir / t["entry"], ignore_errors=True)
+
+
+def restore_trash(game_dir: Path, trash_dir: Path, entry: str) -> str:
+    src = trash_dir / Path(entry).name
+    m = _TRASH_RE.match(src.name)
+    if not src.is_dir() or not m:
+        raise FileNotFoundError("Этого мира уже нет в корзине")
+    saves = game_dir / "saves"
+    saves.mkdir(parents=True, exist_ok=True)
+    target = _free_name(saves, m["name"])
+    shutil.move(str(src), str(target))
+    return target.name
+
+
+def delete_trash(trash_dir: Path, entry: str) -> None:
+    path = trash_dir / Path(entry).name
+    if path.is_dir() and _TRASH_RE.match(path.name):
+        shutil.rmtree(path)
 
 
 def _free_name(saves: Path, base: str) -> Path:
@@ -218,6 +320,7 @@ def copy_world(src_game_dir: Path, folder: str, dst_game_dir: Path) -> str:
 
 
 def delete_world(game_dir: Path, folder: str) -> None:
+    """Стереть мир насовсем (без корзины). Для удаления из интерфейса — trash_world."""
     shutil.rmtree(_world_dir(game_dir, folder))
 
 
