@@ -85,11 +85,19 @@ Section "VaultMC (обязательно)" SecMain
   Delete "$DESKTOP\Neon Launcher.lnk"
   RMDir /r "$SMPROGRAMS\Neon Launcher"
   DeleteRegKey HKCU "${OLD_UNINST_KEY}"
-  ; старые файлы программы удаляем (данные игрока лежат в другой папке и не трогаются)
+  ; прошлая версия остаётся рядом (app.prev, python.prev): к ней можно вернуться ярлыком «Вернуть прошлую версию»
+  ; или кнопкой в настройках (rollback.cmd). Данные игрока лежат в другой папке и не трогаются.
+  RMDir /r "$INSTDIR\app.prev"
+  RMDir /r "$INSTDIR\python.prev"
+  IfFileExists "$INSTDIR\app\main.py" 0 +3
+    Rename "$INSTDIR\app" "$INSTDIR\app.prev"
+    Rename "$INSTDIR\python" "$INSTDIR\python.prev"
   RMDir /r "$INSTDIR\app"
   RMDir /r "$INSTDIR\python"
   SetOutPath "$INSTDIR"
   File /r "${BUNDLE}\*.*"
+  ; скрипт отката — в корне установки: сам он не должен лежать в папке, которую переименовывает
+  CopyFiles /SILENT "$INSTDIR\app\installer\rollback.cmd" "$INSTDIR\rollback.cmd"
   ; VaultMC.exe (копия Python с логотипом) собран в tools/release.py — он уже внутри ${BUNDLE}
 
   ; «Приложения» в параметрах Windows
@@ -134,6 +142,8 @@ Section "Ярлык в меню «Пуск»" SecStart
   CreateDirectory "$SMPROGRAMS\${APPNAME}"
   CreateShortCut "$SMPROGRAMS\${APPNAME}\${APPNAME}.lnk" "$INSTDIR\python\VaultMC.exe" '"$INSTDIR\app\main.py"' "$INSTDIR\app\assets\logo.ico" 0
   CreateShortCut "$SMPROGRAMS\${APPNAME}\Удалить ${APPNAME}.lnk" "$INSTDIR\Uninstall.exe"
+  ; работает, даже если новая версия совсем не запускается
+  CreateShortCut "$SMPROGRAMS\${APPNAME}\Вернуть прошлую версию ${APPNAME}.lnk" "$INSTDIR\rollback.cmd" "" "$INSTDIR\app\assets\logo.ico" 0
 SectionEnd
 
 Section "-Метка установки"
@@ -177,6 +187,9 @@ Section "Uninstall"
   RMDir /r "$SMPROGRAMS\${APPNAME}"
   RMDir /r "$INSTDIR\app"
   RMDir /r "$INSTDIR\python"
+  RMDir /r "$INSTDIR\app.prev"
+  RMDir /r "$INSTDIR\python.prev"
+  Delete "$INSTDIR\rollback.cmd"
   Delete "$INSTDIR\installed-by-setup.txt"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"

@@ -82,7 +82,8 @@ registerPage('settings', {
           <button class="btn ghost" data-a="openLauncher">${ic('folder')} Папка лаунчера</button>
           <button class="btn ghost" data-a="tutorial">${ic('star')} Пройти обучение заново</button></div>
         <div class="row" style="margin-top:10px;align-items:center"><span class="muted grow">Версия VaultMC ${esc(S.boot.version)}</span>
-          <button class="btn" data-a="checkUpdate">${ic('download')} Проверить обновления</button></div></div>
+          <button class="btn" data-a="checkUpdate">${ic('download')} Проверить обновления</button></div>
+        <div id="launcherHealth"></div></div>
 
       ${S.account?.kind === 'offline' ? `<div class="card"><div class="card-title">${ic('key')} Пароль аккаунта ${esc(S.account.username)}</div>
         <div class="row"><input class="input" type="password" id="pw0" placeholder="Текущий пароль"><input class="input" type="password" id="pw1" placeholder="Новый пароль">
@@ -93,6 +94,17 @@ registerPage('settings', {
       <p class="note">Все настройки, аккаунты, сборки и друзья сохраняются автоматически и остаются после перезапуска и переустановки VaultMC.</p>
     </div>`;
     hydrateIcons(el);
+    // прошлая версия рядом (вернуться к ней) и повреждённые файлы лаунчера (починить)
+    api.launcher_health().then((h) => {
+      const box = $('#launcherHealth', el);
+      if (!box || !h) return;
+      el.__prevVersion = h.previous;
+      box.innerHTML = `${h.damagedCount ? `<p class="note warn-note">${ic('alert')} Файлы лаунчера повреждены (${h.damagedCount}) — часто их удаляет антивирус. «Починить» скачает установщик и переустановит лаунчер, сборки и миры не пострадают.</p>` : ''}
+        <div class="row wrap" style="margin-top:8px">
+          ${h.damagedCount ? `<button class="btn primary" data-a="repairLauncher">${ic('shield')} Починить лаунчер</button>` : ''}
+          ${h.previous ? `<button class="btn ghost" data-a="rollback">${ic('refresh')} Вернуть прошлую версию (${esc(h.previous)})</button>` : ''}</div>`;
+      hydrateIcons(box);
+    }).catch(() => {});
     const ramHint = () => {
       const v = S.config.ram_gb;
       $('#ramHint', el).textContent = total ? `В системе ${total} ГБ. ` + (v > total - 2 ? 'Оставьте системе хотя бы 2 ГБ!' : 'Для обычной игры хватает 4 ГБ, для модов — 6–8 ГБ.') : 'Для обычной игры хватает 4 ГБ, для модов — 6–8 ГБ.';
@@ -156,6 +168,14 @@ registerPage('settings', {
       if (a === 'tutorial') showTutorial();
       if (a === 'checkUpdate') checkUpdates(true);
       if (a === 'shortcut') { const r = await safe(api.create_shortcut()); if (r && okOrToast(r)) toast('Ярлык создан: ' + r.path); }
+      if (a === 'rollback') {
+        if (!await confirmDialog('Вернуть прошлую версию?', `Лаунчер закроется и откроется версия ${el.__prevVersion}. Сборки, миры и аккаунты не изменятся. Эту версию лаунчер больше не будет предлагать — следующее обновление придёт как обычно.`, 'Вернуть')) return;
+        okOrToast(await safe(api.launcher_rollback()));
+      }
+      if (a === 'repairLauncher') {
+        const r = await safe(api.repair_launcher());
+        if (r && okOrToast(r)) toast('Скачиваю установщик — лаунчер переустановится и откроется сам', 'info', 8000);
+      }
       if (a === 'recovery') {
         if (!await confirmDialog('Получить код восстановления?', 'Новый код заменит прежний: старый перестанет работать. Сохраните новый код сразу.', 'Получить код')) return;
         const r = await safe(api.recovery_code());

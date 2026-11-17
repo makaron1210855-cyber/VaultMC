@@ -204,6 +204,17 @@ onEvent('packs_updated', (r) => {
   if (S.page === 'instance') refreshPage();
 });
 onEvent('open_pack', () => openPackFile());
+// файлы лаунчера повреждены (core/integrity.py) — один раз за запуск предлагаем починить
+setTimeout(async () => {
+  const h = await api.launcher_health().catch(() => null);
+  if (!h || !h.damagedCount) return;
+  if (await confirmDialog('Файлы лаунчера повреждены',
+    `Не хватает или изменено файлов: ${h.damagedCount} (например, ${h.damaged[0]}). Часто их удаляет антивирус. Лаунчер может работать с ошибками. Починить? Скачается установщик, лаунчер переустановится и откроется сам — сборки, миры и аккаунты не пострадают.`,
+    'Починить')) {
+    const r = await safe(api.repair_launcher());
+    if (r && okOrToast(r)) toast('Скачиваю установщик...', 'info', 8000);
+  }
+}, 12000);
 // сборка из проводника (двойной щелчок по .mrpack): лаунчер сам запускает импорт
 async function openPackFile() {
   const r = await safe(api.take_open_pack());

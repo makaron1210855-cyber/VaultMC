@@ -15,6 +15,7 @@ import re
 from collections import deque
 import os
 import shutil
+import subprocess
 import tempfile
 import threading
 import time
@@ -216,6 +217,7 @@ class Api:
         threading.Thread(target=self._refresh_versions_bg, daemon=True).start()
         threading.Thread(target=self._repair_shortcut, daemon=True).start()
         threading.Thread(target=self._open_pack_loop, daemon=True).start()
+        threading.Thread(target=self._startup_checks, daemon=True).start()
 
     # ================================================================= служебное
     def _attach_window(self, window) -> None:
@@ -919,6 +921,57 @@ class Api:
                 self._bus.emit("update_failed", str(exc))
         threading.Thread(target=job, daemon=True).start()
         return {"started": True}
+
+    # ---- откат лаунчера и проверка его файлов ----
+    def _startup_checks(self) -> None:
+        """При запуске, в фоне: заметить откат на прошлую версию и проверить свои файлы."""
+        try:
+            skipped = updater.note_rollback()
+            if skipped:
+                _log(f"лаунчер откатили с {skipped} на {APP_VERSION} — {skipped} больше не предлагаем")
+        except Exception as exc:  # noqa: BLE001
+            _log(f"rollback note: {exc}")
+        try:
+            from core import integrity
+            self._damaged = integrity.check(Path(__file__).resolve().parents[1])
+            if self._damaged:
+                _log(f"файлы лаунчера повреждены: {len(self._damaged)}, например {self._damaged[0]}")
+        except Exception as exc:  # noqa: BLE001
+            _log(f"integrity: {exc}")
+
+    def launcher_health(self) -> dict:
+        """Для настроек и подсказки при запуске: прошлая версия рядом (можно вернуться) и повреждённые файлы."""
+        inst = Path(__file__).resolve().parents[2]
+        prev = ""
+        prev_utils = inst / "app.prev" / "core" / "utils.py"
+        if prev_utils.is_file() and (inst / "rollback.cmd").is_file():
+            m = re.search(r'^APP_VERSION\s*=\s*"([^"]+)"', prev_utils.read_text(encoding="utf-8", errors="replace"), re.M)
+            prev = m.group(1) if m else "?"
+        damaged = getattr(self, "_damaged", [])
+        return {"current": APP_VERSION, "previous": prev, "damaged": damaged[:20], "damagedCount": len(damaged)}
+
+    def launcher_rollback(self) -> dict:
+        """Вернуть прошлую версию лаунчера: rollback.cmd закроет лаунчер, поменяет папки и запустит прошлую версию."""
+        inst = Path(__file__).resolve().parents[2]
+        script = inst / "rollback.cmd"
+        if os.name != "nt" or not script.is_file() or not (inst / "app.prev" / "main.py").is_file():
+            return {"error": "Прошлой версии рядом нет — откатиться не к чему"}
+        if self._runner.state in ("running", "preparing", "installing") or getattr(self._runner, "busy", False):
+            return {"error": "Закройте игру и дождитесь окончания загрузок"}
+        self._save()
+        try:
+            subprocess.Popen(["cmd", "/c", str(script)], cwd=str(inst), creationflags=0x00000010)   # своё окно консоли
+        except OSError as exc:
+            return {"error": f"Не удалось запустить откат: {exc}"}
+        return {"ok": True}
+
+    def repair_launcher(self) -> dict:
+        """Файлы лаунчера повреждены — переустановить его подписанным установщиком с сайта."""
+        try:
+            self._update_info = updater.fetch_signed()
+        except updater.UpdateError as exc:
+            return {"error": str(exc)}
+        return self.install_update()
 
     def get_logs(self) -> list:
         return list(self._logs)[-3000:]

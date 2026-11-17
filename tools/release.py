@@ -41,7 +41,7 @@ OUT = ROOT / "releases"
 MAJOR_TITLE = "⭐ МАСШТАБНОЕ ОБНОВЛЕНИЕ 6.0 — откат модов, надёжное прямое подключение и порядок в копиях миров"
 
 # что НЕ кладём в установщик (папка app)
-APP_SKIP_TOP = {"build", "dist", "releases", "site", "packaging", "server", ".git", ".venv", "venv", ".claude",
+APP_SKIP_TOP = {"build", "dist", "releases", "site", "packaging", "server", "tests", ".git", ".venv", "venv", ".claude",
                 "CLAUDE.md", ".gitignore"}
 # мусор, который не попадает никуда
 EXCLUDE_DIRS = {".git", ".venv", "venv", "env", "__pycache__", "node_modules", "build", "dist", "releases", ".idea",
@@ -139,6 +139,9 @@ def build_installer(version: str) -> Path:
             shutil.copytree(item, app / item.name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.log"))
         else:
             shutil.copy2(item, app / item.name)
+    sys.path.insert(0, str(ROOT))
+    from core.integrity import build as build_integrity   # files.json: лаунчер сверяет свои файлы при запуске
+    log(f"контрольные суммы файлов лаунчера: {build_integrity(app, version)}")
     shutil.copytree(PY_RUNTIME, BUNDLE / "python", ignore=shutil.ignore_patterns("__pycache__"))
     # копия интерпретатора с названием и логотипом: диспетчер задач, панель задач и «Открыть с помощью»
     # показывают «VaultMC» со своим значком, а не «Python»
@@ -171,6 +174,8 @@ def build_site(version: str, exe: Path) -> Path:
     changes = {v: lines for v, lines in CHANGELOG.items() if int(v.split(".")[0]) >= major - 2}
     info = {"version": version, "url": "VaultMC-Setup.exe", "sha256": hashlib.sha256(data).hexdigest(),
             "notes": f"{MAJOR_TITLE}\n{notes_since(None, version)}", "changes": changes}
+    from signing import sign_manifest                 # подпись ключом владельца (tools/signing.py)
+    info = sign_manifest(info)
     (SITE / "version.json").write_text(json.dumps(info, ensure_ascii=False, indent=1), encoding="utf-8")
 
     OUT.mkdir(parents=True, exist_ok=True)
@@ -180,10 +185,12 @@ def build_site(version: str, exe: Path) -> Path:
         for f in sorted(SITE.rglob("*")):
             if f.is_file():
                 z.write(f, f.relative_to(SITE).as_posix())
-    with zipfile.ZipFile(site_zip) as z:            # контроль: версия и контрольная сумма сходятся
+    with zipfile.ZipFile(site_zip) as z:            # контроль: версия, контрольная сумма и подпись сходятся
         info2 = json.loads(z.read("version.json"))
+        from core.updater import signature_ok
         ok = (info2["version"] == version and f'siteVer">{version}<' in z.read("index.html").decode("utf-8")
-              and hashlib.sha256(z.read("VaultMC-Setup.exe")).hexdigest() == info2["sha256"])
+              and hashlib.sha256(z.read("VaultMC-Setup.exe")).hexdigest() == info2["sha256"]
+              and signature_ok(info2))
     if not ok:
         sys.exit(f"Архив сайта собран неправильно: {site_zip}")
     log(f"сайт: {site_zip.name} ({site_zip.stat().st_size / 1048576:.1f} МБ)")

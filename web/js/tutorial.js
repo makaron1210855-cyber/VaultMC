@@ -3,7 +3,25 @@
 const hasCfKey = () => !!(S.config.curseforge_api_key || (S.boot && S.boot.builtinCfKey));
 
 function tutorialSteps() {
+  const lang = (S.config.ui || {}).lang === 'en' ? 'en' : 'ru';
+  const inst = S.selected || S.instances[0];
   return [
+    {
+      icon: 'globe', title: 'Язык · Language',
+      html: `<p class="no-tr">Выберите язык интерфейса · Choose the interface language</p>
+        <div class="row" style="gap:10px;margin-top:12px">
+          <button class="btn ${lang === 'ru' ? 'primary' : ''}" data-lang="ru">Русский</button>
+          <button class="btn ${lang === 'en' ? 'primary' : ''}" data-lang="en">English</button></div>
+        <p class="muted small no-tr">Поменять можно в любой момент в «Настройках» · You can change it any time in «Settings»</p>`,
+      bind(card) {
+        $$('[data-lang]', card).forEach((b) => (b.onclick = async () => {
+          (S.config.ui = S.config.ui || {}).lang = b.dataset.lang;
+          await api.save_ui('lang', b.dataset.lang);
+          setLanguage(b.dataset.lang);
+          showTutorialStep(card.__step + 1);
+        }));
+      },
+    },
     {
       icon: 'zap', title: 'Добро пожаловать в VaultMC',
       html: `<p>Короткое знакомство на 1 минуту. Его можно пропустить и пройти позже в Настройках.</p>
@@ -23,6 +41,28 @@ function tutorialSteps() {
           <li>${ic('download')} Игра скачается сама при создании сборки</li>
         </ul>`,
       action: S.instances.length ? null : { label: 'Создать первую сборку', icon: 'plus', run: () => { finishTutorial(); openNewInstance(); } },
+    },
+    {
+      icon: 'zap', title: 'Настройка под ваш компьютер',
+      html: `<p>Лаунчер посмотрит память, процессор и видеокарту и сам подберёт память для игры и настройки графики — чтобы не было ни лагов, ни лишней нагрузки.</p>
+        ${inst ? `<div class="row" style="margin-top:10px"><button class="btn primary" id="tutTune">${ic('zap')} Настроить «${esc(inst.name)}» под мой ПК</button></div>
+          <div id="tutTuneRes" class="small" style="margin-top:10px"></div>`
+          : `<p class="muted small">Сборок пока нет. Когда создадите сборку: страница сборки → «Оптимизация» → «Настроить под мой ПК».</p>`}`,
+      bind(card) {
+        const btn = $('#tutTune', card);
+        if (!btn) return;
+        btn.onclick = async () => {
+          btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Смотрю компьютер...';
+          const scan = await safe(api.autotune_scan(inst.id));
+          const res = scan && await safe(api.autotune_apply(inst.id));
+          const out = $('#tutTuneRes', card);
+          if (!out) return;
+          if (!scan || !res || res.error) { btn.disabled = false; btn.textContent = 'Попробовать ещё раз'; if (res && res.error) out.textContent = res.error; return; }
+          btn.innerHTML = `${ic('check')} Готово`; hydrateIcons(btn);
+          out.innerHTML = `<b>${esc(scan.plan.tier_label)}</b><ul class="tut-list">${scan.plan.why.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>`;
+          reloadInstances();
+        };
+      },
     },
     hasCfKey() ? {
       icon: 'puzzle', title: 'Шаг 2. Моды в один клик',
