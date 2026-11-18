@@ -33,18 +33,39 @@ function lhGroundTexture() {
   return c;
 }
 
+// текстура сундука (web/img/chest-diffuse.png, 4096 → 512): из неё берём цвет досок; null — рисуем процедурно
+const LH_CHEST_TEX = 'img/chest-diffuse.png';
+const LH_ATLAS_WOOD = { x: 120, y: 8, w: 96, h: 96 };   // участок с досками на развёртке (в масштабе 512)
+let lhChestAtlas = null;   // canvas | false (не загрузилась) | null (ещё не пробовали)
+async function lhLoadChestAtlas() {
+  if (lhChestAtlas !== null) return lhChestAtlas;
+  const img = await loadImage(LH_CHEST_TEX);
+  if (!img) { lhChestAtlas = false; return false; }
+  const c = document.createElement('canvas'); c.width = 512; c.height = 512;
+  c.getContext('2d').drawImage(img, 0, 0, 512, 512);
+  lhChestAtlas = c;
+  return c;
+}
+
 // развёртка досок для сундука: размеры [w, h, d] как у s3Box; latch — золотая застёжка спереди (на крышке)
 function lhWood(w, h, d, seed, latch) {
   const c = document.createElement('canvas'); c.width = 2 * d + 2 * w; c.height = d + h;
   const g = c.getContext('2d'), r = rng(seed);
   const wood = ['#9a6532', '#8a5a2b', '#a46f3a', '#86572a'];
+  const atlas = lhChestAtlas || null;
+  const px = atlas ? atlas.getContext('2d').getImageData(0, 0, 512, 512).data : null;
   const faces = s3Faces(w, h, d);
   for (const [name, [fx, fy, fw, fh]] of Object.entries(faces)) {
     const sides = name !== 'top' && name !== 'bottom' && fw > 6;      // железные полосы на боковых гранях
     for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
       const edge = x === 0 || y === 0 || x === fw - 1 || y === fh - 1;
       let col = wood[(Math.floor(y / 2) + Math.floor(r() * 2)) % 4];   // доски
-      if (r() < 0.1) col = name === 'top' ? '#b57f48' : '#7a4c24';       // прожилки
+      if (px) {   // цвет из текстуры: участок досок, растянутый на грань
+        const sx = LH_ATLAS_WOOD.x + Math.floor((x + 0.5) * LH_ATLAS_WOOD.w / fw);
+        const sy = LH_ATLAS_WOOD.y + Math.floor((y + 0.5) * LH_ATLAS_WOOD.h / fh);
+        const i = (sy * 512 + sx) * 4;
+        col = `rgb(${px[i]},${px[i + 1]},${px[i + 2]})`;
+      } else if (r() < 0.1) col = name === 'top' ? '#b57f48' : '#7a4c24';   // прожилки (без текстуры)
       if (y === 1 && name !== 'bottom') col = '#6a3f1d';                 // стык досок
       if (sides && (x === Math.round(fw * 0.2) || x === Math.round(fw * 0.8))) col = '#5b6069';   // железная полоса
       if (edge) col = '#3d220e';                                         // тёмный контур
@@ -294,6 +315,7 @@ async function drawSkinRig3d(container, skinUrl, accent) {
   container.__lh = api3;
   container.classList.add('lh-host');
   container.onclick = () => api3.click();
+  await lhLoadChestAtlas();
 
   let resizeT = 0;
   const ro = new ResizeObserver(() => { clearTimeout(resizeT); resizeT = setTimeout(build, 120); });
