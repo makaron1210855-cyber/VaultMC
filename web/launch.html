@@ -5,38 +5,57 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Подождите… — VaultMC</title>
   <style>
-    :root { --bg: #0c0f16; --panel: #141923; --line: #232a38; --text: #eef1f7; --muted: #8c95a8; --accent: #2fd3e6; --accent2: #7c4dff; }
+    :root { --bg: #0b0e15; --panel: rgba(255,255,255,.045); --line: rgba(255,255,255,.09); --text: #eef1f7; --muted: #8c95a8;
+      --accent: #2fd3e6; --accent2: #7c4dff; }
+    * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
       font: 13px/1.4 "Segoe UI", system-ui, sans-serif; overflow: hidden; user-select: none; }
-    .wrap { display: flex; flex-direction: column; gap: 12px; height: 100%; box-sizing: border-box; padding: 18px 20px 16px; }
-    .top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-    .inst { font-size: 15px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .pct { font-size: 24px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
-    .text { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 18px; }
-    .bar { height: 8px; border-radius: 8px; background: var(--line); overflow: hidden; }
-    .bar > div { height: 100%; width: 0; border-radius: 8px; background: linear-gradient(90deg, var(--accent), var(--accent2));
-      transition: width .3s ease; }
-    .steps { list-style: none; margin: 0; padding: 0; display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
-    .steps li { display: flex; align-items: center; gap: 6px; }
-    .steps li::before { content: ""; width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid #3a4356; }
+    body::before { content: ""; position: fixed; inset: -40% -20% auto -20%; height: 90%; pointer-events: none;
+      background: radial-gradient(closest-side, rgba(124,77,255,.28), transparent 70%),
+                  radial-gradient(closest-side at 80% 40%, rgba(47,211,230,.18), transparent 70%); }
+    .wrap { position: relative; display: flex; flex-direction: column; height: 100%; padding: 22px 26px 20px; }
+    .head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+    .sub { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+    .inst { margin-top: 4px; font-size: 22px; font-weight: 800; line-height: 1.15; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pct { font-size: 40px; line-height: 1; font-weight: 800; font-variant-numeric: tabular-nums;
+      background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .bar { position: relative; height: 10px; margin-top: 18px; border-radius: 10px; background: rgba(255,255,255,.08); overflow: hidden; }
+    .bar > div { position: relative; height: 100%; width: 0; border-radius: 10px; overflow: hidden;
+      background: linear-gradient(90deg, var(--accent), var(--accent2)); box-shadow: 0 0 18px rgba(47,211,230,.55);
+      transition: width .35s ease; }
+    .bar > div::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent); animation: shine 1.6s linear infinite; }
+    @keyframes shine { to { transform: translateX(100%); } }
+    .text { margin-top: 10px; min-height: 18px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .steps { list-style: none; margin: 16px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .steps li { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px;
+      background: var(--panel); border: 1px solid var(--line); color: var(--muted); font-size: 12px; transition: .25s; }
+    .steps li::before { content: ""; flex: none; width: 10px; height: 10px; border-radius: 50%; border: 2px solid #3a4356; }
     .steps li.done { color: var(--text); }
     .steps li.done::before { background: var(--accent); border-color: var(--accent); }
-    .steps li.now { color: var(--text); font-weight: 600; }
-    .steps li.now::before { border-color: var(--accent); }
-    .log { flex: 1; min-height: 0; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-      padding: 10px 12px; font: 11.5px/1.5 Consolas, monospace; color: var(--muted); user-select: text; }
+    .steps li.now { color: var(--text); font-weight: 600; border-color: rgba(47,211,230,.5); background: rgba(47,211,230,.08); }
+    .steps li.now::before { border-color: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse { 50% { box-shadow: 0 0 0 5px rgba(47,211,230,.18); } }
+    .log { flex: 1; min-height: 0; margin-top: 14px; overflow: auto; padding: 8px 12px; border-radius: 12px;
+      background: rgba(0,0,0,.28); border: 1px solid var(--line); font: 11px/1.5 Consolas, monospace; color: var(--muted); user-select: text;
+      -webkit-mask-image: linear-gradient(transparent, #000 22px); mask-image: linear-gradient(transparent, #000 22px); }
+    .log::-webkit-scrollbar { width: 6px; } .log::-webkit-scrollbar-thumb { background: rgba(255,255,255,.14); border-radius: 6px; }
     .log div { white-space: pre-wrap; word-break: break-all; }
-    .foot { display: flex; justify-content: flex-end; }
-    .btn { min-width: 150px; height: 36px; border-radius: 12px; border: 1px solid var(--line); background: #1b2130; color: var(--text);
-      font: inherit; font-weight: 600; cursor: pointer; }
-    .btn:hover { background: #242b3c; }
+    .foot { display: flex; justify-content: flex-end; margin-top: 14px; }
+    .btn { min-width: 140px; height: 36px; border-radius: 18px; border: 1px solid var(--line); background: rgba(255,255,255,.06);
+      color: var(--text); font: inherit; font-weight: 600; cursor: pointer; transition: .2s; }
+    .btn:hover { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.2); }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="top"><div class="inst" id="inst"></div><div class="pct" id="pct">0%</div></div>
-    <div class="text" id="text"></div>
+    <div class="head">
+      <div style="min-width:0"><div class="sub" id="sub">Запускаю игру</div><div class="inst" id="inst"></div></div>
+      <div class="pct" id="pct">0%</div>
+    </div>
     <div class="bar"><div id="bar"></div></div>
+    <div class="text" id="text"></div>
     <ol class="steps" id="steps"></ol>
     <div class="log" id="log"></div>
     <div class="foot"><button class="btn" id="cancel">Отмена</button></div>

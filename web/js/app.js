@@ -11,7 +11,10 @@ async function play(server, force = false) {
   const address = typeof server === 'string' ? server : '';
   // запуск готовится в фоне: ответ «ок» сразу, проверка модов придёт событием modcheck
   const res = await safe(api.play(inst.id, address, force));
-  if (res && okOrToast(res)) toast(address ? `Запускаю «${inst.name}» и подключаюсь к ${address}` : `Запускаю «${inst.name}»...`);
+  if (res && okOrToast(res)) {
+    S.launchWin = !!res.window;   // есть отдельное окно запуска — карточку и тост в лаунчере не показываем
+    if (!S.launchWin) toast(address ? `Запускаю «${inst.name}» и подключаюсь к ${address}` : `Запускаю «${inst.name}»...`);
+  }
 }
 onEvent('modcheck', (r) => showModCheck(r, r.address));
 

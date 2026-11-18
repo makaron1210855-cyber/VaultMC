@@ -31,7 +31,8 @@ window.__launch = (d) => {
   const running = d.state === 'running';
   const value = running ? 1 : Math.max(0, Math.min(1, d.value || 0));
   document.title = ltr('Подождите…') + ' — VaultMC';
-  document.getElementById('inst').textContent = running ? ltr('Игра запущена') : ltr(d.title || 'Запускаю игру');
+  document.getElementById('sub').textContent = ltr(running ? 'Игра запущена' : d.state === 'installing' ? 'Скачиваю игру' : 'Запускаю игру');
+  document.getElementById('inst').textContent = d.title || '';
   document.getElementById('pct').textContent = Math.round(value * 100) + '%';
   document.getElementById('text').textContent = ltr(d.text || '');
   document.getElementById('bar').style.width = value * 100 + '%';

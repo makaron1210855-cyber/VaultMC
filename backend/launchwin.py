@@ -33,12 +33,13 @@ class LaunchWindow:
         self._win = None
         self._ready = False
         self._dirty = False
-        self._by_us = False           # закрываем сами (игра запустилась) — это не отмена
+        self._opened = 0.0
+        self._by_us = False         # закрываем сами (игра запустилась) — это не отмена
         self._lines: list[str] = []
         self._snap = {"state": "preparing", "value": 0.0, "text": "", "title": "", "lang": "ru"}
 
     # ---- открыть / закрыть ----
-    def open(self, title: str, lang: str) -> None:
+    def open(self, title: str, lang: str, parent=None) -> None:
         import webview   # импорт здесь: модуль нужен только в окне pywebview
         self.close()
         with self._lock:
@@ -46,14 +47,22 @@ class LaunchWindow:
             self._lines = []
             self._dirty = True
             self._ready = False
+        w, h = 600, 520
+        pos = {}
+        if parent is not None:   # по центру окна лаунчера, а не где попало на экране
+            try:
+                pos = {"x": int(parent.x + (parent.width - w) / 2), "y": int(parent.y + (parent.height - h) / 2)}
+            except Exception:  # noqa: BLE001 — размеры окна неизвестны: пусть система сама решит
+                pos = {}
         win = webview.create_window(
             "Подождите… — VaultMC", str(self._page), js_api=_PageApi(self._on_cancel),
-            width=540, height=430, resizable=False, background_color="#0c0f16",
+            width=w, height=h, resizable=False, background_color="#0c0f16", **pos,
         )
         win.events.loaded += self._on_loaded
         win.events.closing += self._on_closing
         with self._lock:
             self._win = win
+            self._opened = time.monotonic()
         threading.Thread(target=self._pump, args=(win,), daemon=True).start()
 
     def close(self) -> None:
@@ -66,6 +75,22 @@ class LaunchWindow:
                 win.destroy()
             except Exception:  # noqa: BLE001 — окно уже закрыто
                 pass
+
+    def close_soft(self, min_total: float = 3.5) -> None:
+        """Закрыть не раньше чем через min_total секунд после открытия: при быстром запуске окно успевает увидеть."""
+        with self._lock:
+            win = self._win
+            wait = max(1.2, min_total - (time.monotonic() - self._opened))   # «Игра запущена» видно хотя бы 1,2 с
+        if win is None:
+            return
+
+        def later():
+            time.sleep(wait)
+            with self._lock:
+                same = self._win is win
+            if same:
+                self.close()
+        threading.Thread(target=later, daemon=True).start()
 
     def is_open(self) -> bool:
         with self._lock:

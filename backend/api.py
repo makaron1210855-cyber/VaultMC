@@ -206,6 +206,7 @@ class Api:
         # Комната (адрес e4mc, прямое подключение, код) — только если игрок сам нажал «Открыть мир для друзей».
         # Обычное «Открыть для сети» (Radmin, одна Wi-Fi) лаунчер не трогает.
         self._play_pending = False        # запуск готовится в фоне (проверка модов)
+        self._play_lock = threading.Lock()
         self._launch_win = None           # отдельное окно «Подождите…» (backend/launchwin.py)
         self._play_stop = threading.Event()
         self._room_pending = ("", 0.0)    # (сборка, когда нажали) — её сейчас запустят как комнату
@@ -244,7 +245,9 @@ class Api:
     def _on_runner_event(self, event: str, payload) -> None:
         if self._launch_win is not None and event in ("log", "progress", "state", "error"):
             self._launch_win.update(event, payload)
-            if event == "state" and payload in ("running", "idle"):   # игра показала окно или запуск кончился
+            if event == "state" and payload == "running":   # игра показала окно: даём окну запуска побыть на виду
+                self._launch_win.close_soft()
+            elif event == "state" and payload == "idle":    # запуск кончился или отменён
                 self._launch_win.close()
         if event == "log":
             self._logs.append(str(payload))
@@ -2596,28 +2599,31 @@ class Api:
         inst = self._instances.get(instance_id)
         if inst is None:
             return {"error": "Создайте или выберите сборку"}
-        if self._runner.busy or self._play_pending:
-            return {"error": "Уже идёт другая операция"}
+        with self._play_lock:     # два быстрых нажатия «Играть» не должны запустить подготовку дважды
+            if self._runner.busy or self._play_pending:
+                return {"error": "Уже идёт другая операция"}
+            self._play_pending = True
         # проверка модов, конфликты, DNS и подготовка — в фоне: окно отвечает на нажатия во время запуска
-        self._play_pending = True
         self._play_stop.clear()
-        self._launch_window_open(inst)
+        has_window = self._launch_window_open(inst)
         self._on_runner_event("state", "preparing")
         self._on_runner_event("progress", (0.01, "Проверка модов..."))
         threading.Thread(target=self._play_job, args=(inst, acc, server, force), daemon=True).start()
-        return {"ok": True}
+        return {"ok": True, "window": has_window}
 
-    def _launch_window_open(self, inst) -> None:
+    def _launch_window_open(self, inst) -> bool:
         """Окно «Подождите…» — только в окне pywebview (в режиме разработки его нет)."""
         if getattr(self._bus, "_window", None) is None:
-            return
+            return False
         try:
             if self._launch_win is None:
                 from core.utils import resource_path
                 self._launch_win = LaunchWindow(resource_path("web/launch.html"), self.cancel)
-            self._launch_win.open(inst.name, (self._cfg.ui or {}).get("lang", "ru"))
+            self._launch_win.open(inst.name, (self._cfg.ui or {}).get("lang", "ru"), getattr(self._bus, "_window", None))
+            return True
         except Exception as exc:  # noqa: BLE001 — без окна запуск всё равно идёт (есть карточка в лаунчере)
             _log(f"окно запуска: {exc}")
+            return False
 
     def _close_launch_window(self) -> None:
         if self._launch_win is not None:

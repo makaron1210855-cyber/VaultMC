@@ -82,7 +82,7 @@ function renderLaunch() {
   const card = launchCard();
   const running = S.state === 'running';
   // импорт и создание сборок (S.taskNew) — у них своя строка в нижней панели, карточку не показываем
-  if ((!busyState() && !running) || S.taskNew || launchHidden) { card.hidden = true; return; }
+  if ((!busyState() && !running) || S.taskNew || launchHidden || S.launchWin) { card.hidden = true; return; }
   card.hidden = false;
   const key = `${S.state}|${launchStageNow()}|${S.selected ? S.selected.id : ''}`;
   if (card.dataset.key !== key) launchBuild(card);
@@ -95,7 +95,7 @@ function renderLaunch() {
 let launchPrev = 'idle';
 onEvent('state', (st) => {
   if (st === 'preparing' && launchPrev === 'idle') launchHidden = false;   // новый запуск — карточка снова на виду
-  if (st === 'idle') launchLastLine = '';
+  if (st === 'idle') { launchLastLine = ''; S.launchWin = false; }
   launchPrev = st;
   setTimeout(renderLaunch, 0);
 });
