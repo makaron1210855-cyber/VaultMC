@@ -48,34 +48,38 @@ async function lhLoadChestAtlas() {
 }
 
 // развёртка досок для сундука: размеры [w, h, d] как у s3Box; latch — золотая застёжка спереди (на крышке)
-function lhWood(w, h, d, seed, latch) {
-  const c = document.createElement('canvas'); c.width = 2 * d + 2 * w; c.height = d + h;
-  const g = c.getContext('2d'), r = rng(seed);
+// K — во сколько раз развёртка крупнее «блоков» сундука: каждый блок делится на K×K точек текстуры, поэтому доски видны
+const LH_WOOD_K = 8;
+function lhWood(w, h, d, seed, latch, K = LH_WOOD_K) {
+  const c = document.createElement('canvas'); c.width = K * (2 * d + 2 * w); c.height = K * (d + h);
+  const g = c.getContext('2d');
   const wood = ['#9a6532', '#8a5a2b', '#a46f3a', '#86572a'];
   const atlas = lhChestAtlas || null;
   const px = atlas ? atlas.getContext('2d').getImageData(0, 0, 512, 512).data : null;
   const faces = s3Faces(w, h, d);
   for (const [name, [fx, fy, fw, fh]] of Object.entries(faces)) {
     const sides = name !== 'top' && name !== 'bottom' && fw > 6;      // железные полосы на боковых гранях
-    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+    const sw = fw * K, sh = fh * K;
+    for (let sy = 0; sy < sh; sy++) for (let sx = 0; sx < sw; sx++) {
+      const x = Math.floor(sx / K), y = Math.floor(sy / K);            // координаты блока
       const edge = x === 0 || y === 0 || x === fw - 1 || y === fh - 1;
-      let col = wood[(Math.floor(y / 2) + Math.floor(r() * 2)) % 4];   // доски
-      if (px) {   // цвет из текстуры: участок досок, растянутый на грань
-        const sx = LH_ATLAS_WOOD.x + Math.floor((x + 0.5) * LH_ATLAS_WOOD.w / fw);
-        const sy = LH_ATLAS_WOOD.y + Math.floor((y + 0.5) * LH_ATLAS_WOOD.h / fh);
-        const i = (sy * 512 + sx) * 4;
+      let col = wood[(Math.floor(y / 2) + x) % 4];                     // доски (без текстуры)
+      if (px) {   // цвет из текстуры: участок досок, растянутый на грань с сохранением деталей
+        const ax = LH_ATLAS_WOOD.x + Math.floor((sx + 0.5) * LH_ATLAS_WOOD.w / sw);
+        const ay = LH_ATLAS_WOOD.y + Math.floor((sy + 0.5) * LH_ATLAS_WOOD.h / sh);
+        const i = (ay * 512 + ax) * 4;
         col = `rgb(${px[i]},${px[i + 1]},${px[i + 2]})`;
-      } else if (r() < 0.1) col = name === 'top' ? '#b57f48' : '#7a4c24';   // прожилки (без текстуры)
-      if (y === 1 && name !== 'bottom') col = '#6a3f1d';                 // стык досок
+      }
+      if (y === 1 && name !== 'bottom') col = '#5a3516';                 // стык досок
       if (sides && (x === Math.round(fw * 0.2) || x === Math.round(fw * 0.8))) col = '#5b6069';   // железная полоса
       if (edge) col = '#3d220e';                                         // тёмный контур
-      g.fillStyle = col; g.fillRect(fx + x, fy + y, 1, 1);
+      g.fillStyle = col; g.fillRect(fx * K + sx, fy * K + sy, 1, 1);
     }
   }
   if (latch) {   // замок: медная пластина с золотой серединкой
-    const [fx, fy, fw, fh] = faces.front, cx = fx + Math.floor(fw / 2);
-    g.fillStyle = '#8a6a1a'; g.fillRect(cx - 2, fy, 4, fh);
-    g.fillStyle = '#f2d15a'; g.fillRect(cx - 1, fy, 2, fh);
+    const [fx, fy, fw, fh] = faces.front, cx = (fx + Math.floor(fw / 2)) * K;
+    g.fillStyle = '#8a6a1a'; g.fillRect(cx - 2 * K, fy * K, 4 * K, fh * K);
+    g.fillStyle = '#f2d15a'; g.fillRect(cx - K, fy * K, 2 * K, fh * K);
   }
   return c;
 }
@@ -160,10 +164,10 @@ async function drawSkinRig3d(container, skinUrl, accent) {
     const cw = 10, chh = 5, cd = 7, lidH = 2;
     const chest = lhEl('lh-chestg');
     const base = lhEl('s3-pivot'); base.style.transform = `translate3d(0,${-(chh / 2) * U}px,0)`;
-    const bb = s3Box(lhWood(cw, chh, cd, 11, false), 0, 0, [cw, chh, cd], U, [1, 1, 1], 1); lhShade(bb); base.append(bb);
+    const bb = s3Box(lhWood(cw, chh, cd, 11, false), 0, 0, [cw, chh, cd], U, [1, 1, 1], LH_WOOD_K); lhShade(bb); base.append(bb);
     const lidPivot = lhEl('s3-pivot');
     const lidOff = lhEl('s3-off'); lidOff.style.transform = `translate3d(0,${-(lidH / 2) * U}px,${(cd / 2) * U}px)`;
-    const lb = s3Box(lhWood(cw, lidH, cd, 12, true), 0, 0, [cw, lidH, cd], U, [1, 1, 1], 1); lhShade(lb); lidOff.append(lb); lidPivot.append(lidOff);
+    const lb = s3Box(lhWood(cw, lidH, cd, 12, true), 0, 0, [cw, lidH, cd], U, [1, 1, 1], LH_WOOD_K); lhShade(lb); lidOff.append(lb); lidPivot.append(lidOff);
     const cglow = lhEl('lh-chestglow');
     cglow.style.cssText = `width:${(cw - 1.5) * U}px;height:${(cd - 1.5) * U}px;margin:${-(cd - 1.5) / 2 * U}px 0 0 ${-(cw - 1.5) / 2 * U}px;`
       + `transform:translate3d(0,${-chh * U + 1}px,0) rotateX(90deg);`;
