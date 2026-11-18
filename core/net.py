@@ -94,13 +94,15 @@ def sha1_file(path: Path) -> str:
 
 
 def is_valid(path: Path, sha1: str | None, size: int | None) -> bool:
-    """Файл считается целым, если совпадает размер (быстро) или, когда размер неизвестен, SHA-1."""
+    """Файл целый, если совпадает размер (быстрая отбраковка) и, когда SHA-1 известен, совпадает хэш.
+    Раньше при известном размере хэш не проверялся: файл того же размера, но с битым содержимым, принимался навсегда."""
     if not path.exists():
         return False
-    if size is not None:
-        return path.stat().st_size == size
+    if size is not None and path.stat().st_size != size:
+        return False
     if sha1:
         return sha1_file(path) == sha1.lower()
+    return True
     return True
 
 
