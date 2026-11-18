@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Подождите… — VaultMC</title>
+  <style>
+    :root { --bg: #0c0f16; --panel: #141923; --line: #232a38; --text: #eef1f7; --muted: #8c95a8; --accent: #2fd3e6; --accent2: #7c4dff; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+      font: 13px/1.4 "Segoe UI", system-ui, sans-serif; overflow: hidden; user-select: none; }
+    .wrap { display: flex; flex-direction: column; gap: 12px; height: 100%; box-sizing: border-box; padding: 18px 20px 16px; }
+    .top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    .inst { font-size: 15px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pct { font-size: 24px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
+    .text { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 18px; }
+    .bar { height: 8px; border-radius: 8px; background: var(--line); overflow: hidden; }
+    .bar > div { height: 100%; width: 0; border-radius: 8px; background: linear-gradient(90deg, var(--accent), var(--accent2));
+      transition: width .3s ease; }
+    .steps { list-style: none; margin: 0; padding: 0; display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
+    .steps li { display: flex; align-items: center; gap: 6px; }
+    .steps li::before { content: ""; width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid #3a4356; }
+    .steps li.done { color: var(--text); }
+    .steps li.done::before { background: var(--accent); border-color: var(--accent); }
+    .steps li.now { color: var(--text); font-weight: 600; }
+    .steps li.now::before { border-color: var(--accent); }
+    .log { flex: 1; min-height: 0; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+      padding: 10px 12px; font: 11.5px/1.5 Consolas, monospace; color: var(--muted); user-select: text; }
+    .log div { white-space: pre-wrap; word-break: break-all; }
+    .foot { display: flex; justify-content: flex-end; }
+    .btn { min-width: 150px; height: 36px; border-radius: 12px; border: 1px solid var(--line); background: #1b2130; color: var(--text);
+      font: inherit; font-weight: 600; cursor: pointer; }
+    .btn:hover { background: #242b3c; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top"><div class="inst" id="inst"></div><div class="pct" id="pct">0%</div></div>
+    <div class="text" id="text"></div>
+    <div class="bar"><div id="bar"></div></div>
+    <ol class="steps" id="steps"></ol>
+    <div class="log" id="log"></div>
+    <div class="foot"><button class="btn" id="cancel">Отмена</button></div>
+  </div>
+  <script src="js/i18n.js"></script>
+  <script src="js/launch.js"></script>
+</body>
+</html>

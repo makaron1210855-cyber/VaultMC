@@ -500,7 +500,7 @@ class GameRunner:
 
             # пока игра грузится (все ядра заняты модами), она идёт с пониженным приоритетом — ПК остаётся отзывчивым,
             # окна не «зависают». Когда меню появилось, возвращаем обычный (или повышенный, если включено в настройках)
-            flags = no_window_flags() | (0x00004000 if is_windows() and not target.compat else 0)   # BELOW_NORMAL_PRIORITY_CLASS
+            flags = no_window_flags()   # обычный приоритет: при пониженном игра плохо отзывается на окна при загрузке
             started = time.time()
             self.killed = False
             self.process = subprocess.Popen(plan.command, cwd=str(target.game_dir), stdout=subprocess.PIPE,
@@ -512,8 +512,8 @@ class GameRunner:
             def restore_priority(p=proc):
                 if p.poll() is None and not target.compat:
                     set_process_priority(p, normal)
-            if is_windows() and not target.compat:
-                _t = threading.Timer(120, restore_priority)   # на случай, если «Sound engine» не появится в логе
+            if is_windows() and not target.compat and self.config.high_priority:
+                _t = threading.Timer(120, restore_priority)   # повышенный приоритет — после загрузки, как в настройках
                 _t.daemon = True
                 _t.start()
             self._state("running")

@@ -215,6 +215,10 @@ def run_app() -> None:
 
     def remember_size():
         try:
+            api._close_launch_window()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
             api.save_window_size(window.width, window.height)
         except Exception:  # noqa: BLE001
             pass
