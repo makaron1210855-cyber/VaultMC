@@ -160,7 +160,7 @@ async function drawSkinRig3d(container, skinUrl, accent) {
     // сундук-«хранилище» перед персонажем (лежит в группе персонажа, но каждый кадр компенсируем его прыжок и поворот)
     // модель сундука из minecraft-chest.zip: основание 14×10×14, крышка 14×5×14 (на 1 точку заходит на основание),
     // замок 2×4×1 висит на крышке и свисает на основание. Уменьшаем до CS, чтобы сундук не закрывал персонажа
-    const CS = 0.7, Uc = U * CS;
+    const CS = 0.62, Uc = U * CS;
     const cw = 14, chh = 10, cd = 14, lidH = 5;
     const chest = lhEl('lh-chestg');
     const base = lhEl('s3-pivot'); base.style.transform = `translate3d(0,${-(chh / 2) * Uc}px,0)`;
@@ -256,7 +256,7 @@ async function drawSkinRig3d(container, skinUrl, accent) {
       if (st.shadow) st.shadow.style.opacity = (1 - 0.45 * jump).toFixed(2);
 
       // сундук стоит на месте (компенсируем прыжок и поворот персонажа); крышка и свет
-      const cx = -8 * U, cy = 16 * U, cz = 8 * U;
+      const cx = -6.4 * U, cy = 16 * U, cz = 6.5 * U;
       st.chest.style.transform = `rotateY(${(-yaw).toFixed(2)}deg) translate3d(0,${(-dy).toFixed(2)}px,0) translate3d(${cx}px,${cy}px,${cz}px)`;
       const open = act ? lhSeg(T, 0.12, 0.3) * (1 + 0.08 * Math.sin(Math.PI * lhSeg(T, 0.12, 0.3))) - lhSeg(T, 0.95, 1.2) : 0;
       st.lid.style.transform = `translate3d(0,${-st.chestH * U}px,${-(st.chestD / 2) * U}px) rotateX(${(open * 108).toFixed(2)}deg)`;
