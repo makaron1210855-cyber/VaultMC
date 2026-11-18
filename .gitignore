@@ -13,3 +13,5 @@ config.json
 saves/
 *.zip
 server/.wrangler/
+
+.playwright-mcp/
