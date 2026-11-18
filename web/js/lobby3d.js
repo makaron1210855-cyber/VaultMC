@@ -61,7 +61,7 @@ function lhWood(w, h, d, seed, latch, K = LH_WOOD_K) {
   const atlas = lhChestAtlas || null;
   const px = atlas ? atlas.getContext('2d').getImageData(0, 0, 512, 512).data : null;
   const faces = s3Faces(w, h, d);
-  const uv = LH_UV[latch ? 'lid' : 'base'];
+  const uv = LH_UV[latch === true ? 'lid' : 'base'];
   for (const [name, [fx, fy, fw, fh]] of Object.entries(faces)) {
     const sw = fw * K, sh = fh * K;
     const [ux, uy, uw, uh] = uv[name] || [0, 0, 1, 1];   // кусок развёртки этой грани, в пикселях 64×64
@@ -78,10 +78,13 @@ function lhWood(w, h, d, seed, latch, K = LH_WOOD_K) {
       g.fillStyle = col; g.fillRect(fx * K + sx, fy * K + sy, 1, 1);
     }
   }
-  if (latch) {   // железный замок на крышке: серебристая пластина
+  if (latch) {   // железный замок как в игре: узкая застёжка (2 точки), начинается на крышке и свисает на основание
     const [fx, fy, fw, fh] = faces.front, cx = (fx + Math.floor(fw / 2)) * K;
-    g.fillStyle = '#6b6f78'; g.fillRect(cx - 2 * K, fy * K, 4 * K, fh * K);
-    g.fillStyle = '#d9dee6'; g.fillRect(cx - K, fy * K + K, 2 * K, Math.max(1, fh * K - 2 * K));
+    const onLid = latch === true;
+    const y0 = onLid ? fy * K + K : fy * K, y1 = onLid ? (fy + fh) * K : fy * K + 2 * K;
+    g.fillStyle = '#3b3e45'; g.fillRect(cx - K, y0, 2 * K, y1 - y0);                      // тёмный контур
+    g.fillStyle = '#c9ced6'; g.fillRect(cx - K + 2, y0 + 2, 2 * K - 4, y1 - y0 - 2);        // светлая пластина
+    if (!onLid) { g.fillStyle = '#3b3e45'; g.fillRect(cx - 2, y0 + 4, 4, 7); }             // замочная скважина
   }
   return c;
 }
@@ -166,7 +169,7 @@ async function drawSkinRig3d(container, skinUrl, accent) {
     const cw = 10, chh = 5, cd = 7, lidH = 2;
     const chest = lhEl('lh-chestg');
     const base = lhEl('s3-pivot'); base.style.transform = `translate3d(0,${-(chh / 2) * U}px,0)`;
-    const bb = s3Box(lhWood(cw, chh, cd, 11, false), 0, 0, [cw, chh, cd], U, [1, 1, 1], LH_WOOD_K); lhShade(bb); base.append(bb);
+    const bb = s3Box(lhWood(cw, chh, cd, 11, 'base'), 0, 0, [cw, chh, cd], U, [1, 1, 1], LH_WOOD_K); lhShade(bb); base.append(bb);
     const lidPivot = lhEl('s3-pivot');
     const lidOff = lhEl('s3-off'); lidOff.style.transform = `translate3d(0,${-(lidH / 2) * U}px,${(cd / 2) * U}px)`;
     const lb = s3Box(lhWood(cw, lidH, cd, 12, true), 0, 0, [cw, lidH, cd], U, [1, 1, 1], LH_WOOD_K); lhShade(lb); lidOff.append(lb); lidPivot.append(lidOff);
