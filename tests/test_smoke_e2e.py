@@ -63,8 +63,8 @@ class ReleaseConsistencyTests(unittest.TestCase):
         import siteversions
         page = siteversions.render({"7.0": ["Первый выпуск"], "6.4.20": ["Старое"], "1.0.1": ["Совсем старое"]}, "7.0")
         self.assertIn('id="v7.0"', page)
-        self.assertEqual(page.count('class="tag beta"'), 2)
-        self.assertEqual(page.count('class="tag ok"'), 1)
+        self.assertEqual(page.count('class="tag beta"'), 3)   # пока все выпуски — бета
+        self.assertEqual(page.count('class="tag ok"'), 0)
         self.assertLess(page.index("v7.0"), page.index("v6.4.20"))            # новые сверху
         self.assertNotIn("<script>", siteversions.render({"7.0": ["<script>x</script>"]}, "7.0"))   # текст экранируется
 

@@ -1,6 +1,6 @@
 """Страница версий для сайта (site/versions.html): все выпуски с изменениями, берутся из core/changelog.py.
 
-Выпуски до RELEASE_FROM помечены «бета»: это время, когда лаунчер ещё обкатывался. Страница сама пересобирается
+Выпуски до RELEASE_FROM помечены «бета». RELEASE_FROM = None — бета все (так решил владелец 18.11.2026). Страница сама пересобирается
 при каждой сборке релиза (tools/release.py), так что вручную её править не нужно.
 """
 from __future__ import annotations
@@ -8,7 +8,7 @@ from __future__ import annotations
 import html
 from pathlib import Path
 
-RELEASE_FROM = (7, 0)       # первый стабильный выпуск («1.0 релиз»); всё, что раньше, — бета
+RELEASE_FROM = None        # с какой версии «релиз», например (8, 0); None — пока все выпуски бета
 
 
 def _key(v: str) -> tuple:
@@ -18,7 +18,7 @@ def _key(v: str) -> tuple:
 def render(changelog: dict, current: str) -> str:
     rows = []
     for ver in sorted(changelog, key=_key, reverse=True):
-        beta = _key(ver) < RELEASE_FROM
+        beta = RELEASE_FROM is None or _key(ver) < RELEASE_FROM
         items = "".join(f"<li>{html.escape(line)}</li>" for line in changelog[ver])
         badge = '<span class="tag beta">бета</span>' if beta else '<span class="tag ok">релиз</span>'
         now = ' <span class="tag now">текущая</span>' if ver == current else ""
@@ -61,7 +61,7 @@ ul { margin: 0; padding-left: 20px; } li { margin: 4px 0; }
 <main>
 <a href="./">← На главную</a>
 <h1>Версии VaultMC</h1>
-<p class="lead">Текущая версия — {{VERSION}}. Версии до 7.0 — бета: так лаунчер обкатывался; с 7.0 — стабильные выпуски.</p>
+<p class="lead">Текущая версия — {{VERSION}}. Все версии пока — бета: лаунчер ещё обкатывается.</p>
 {{ROWS}}
 </main>
 </body>
