@@ -246,7 +246,7 @@ class Api:
         if self._launch_win is not None and event in ("log", "progress", "state", "error"):
             self._launch_win.update(event, payload)
             if event == "state" and payload == "running":   # игра показала окно: даём окну запуска побыть на виду
-                self._launch_win.close_soft()
+                self._launch_win.close_soft(lambda: getattr(getattr(self._runner, "process", None), "pid", None))
             elif event == "state" and payload == "idle":    # запуск кончился или отменён
                 self._launch_win.close()
         if event == "log":

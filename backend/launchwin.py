@@ -14,6 +14,40 @@ import time
 from pathlib import Path
 
 
+def _game_window_state(pid) -> str:
+    """Окно процесса игры: «none» — ещё нет, «hung» — Windows пишет «не отвечает», «ok» — отвечает, «gone» — процесса нет."""
+    if not pid:
+        return "none"
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+        h = kernel32.OpenProcess(0x1000, False, int(pid))   # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return "gone"
+        code = wintypes.DWORD()
+        alive = kernel32.GetExitCodeProcess(h, ctypes.byref(code)) and code.value == 259   # STILL_ACTIVE
+        kernel32.CloseHandle(h)
+        if not alive:
+            return "gone"
+        found: list[int] = []
+
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        def each(hwnd, _):
+            owner = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+            if owner.value == int(pid) and user32.IsWindowVisible(hwnd) and not user32.GetWindow(hwnd, 4):   # без владельца
+                found.append(hwnd)
+            return True
+
+        user32.EnumWindows(each, 0)
+        if not found:
+            return "none"
+        return "hung" if any(user32.IsHungAppWindow(w) for w in found) else "ok"
+    except Exception:  # noqa: BLE001 — не смогли проверить: окно закроется по времени
+        return "ok"
+
+
 class _PageApi:
     """Методы, которые вызывает кнопка «Отмена» на странице (pywebview.api.cancel)."""
 
@@ -76,20 +110,34 @@ class LaunchWindow:
             except Exception:  # noqa: BLE001 — окно уже закрыто
                 pass
 
-    def close_soft(self, min_total: float = 3.5) -> None:
-        """Закрыть не раньше чем через min_total секунд после открытия: при быстром запуске окно успевает увидеть."""
+    def close_soft(self, pid_getter=None, min_total: float = 3.5, max_total: float = 120.0) -> None:
+        """Закрыть окно, когда игра уже показала своё окно и оно отвечает (не «не отвечает»).
+
+        Пока окно игры висит, Windows пишет «не отвечает» и по клику показывает вопрос про закрытие программы —
+        наше окно остаётся сверху и закрывается позже. Не раньше min_total с открытия (быстрый запуск должен быть
+        виден) и не позже max_total (на всякий случай)."""
         with self._lock:
             win = self._win
-            wait = max(1.2, min_total - (time.monotonic() - self._opened))   # «Игра запущена» видно хотя бы 1,2 с
+            opened = self._opened
         if win is None:
             return
 
         def later():
-            time.sleep(wait)
-            with self._lock:
-                same = self._win is win
-            if same:
-                self.close()
+            time.sleep(1.2)                       # «Игра запущена» видно хотя бы 1,2 с
+            ok_in_row = 0
+            while True:
+                with self._lock:
+                    if self._win is not win:
+                        return
+                age = time.monotonic() - opened
+                state = _game_window_state(pid_getter() if pid_getter else None)
+                if state == "gone":               # игра уже закрылась
+                    break
+                ok_in_row = ok_in_row + 1 if state == "ok" else 0
+                if (age >= min_total and ok_in_row >= 3) or age >= max_total:
+                    break
+                time.sleep(0.4)
+            self.close()
         threading.Thread(target=later, daemon=True).start()
 
     def is_open(self) -> bool:
