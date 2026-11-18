@@ -247,3 +247,42 @@ function copyText(text) {
 }
 
 function debounce(fn, ms = 250) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+/* ---------------------------------------------------------------- свои подсказки
+   Системные подсказки браузера (атрибут title) выглядят чужеродно: жёлтая рамка, шрифт Windows, не слушаются темы.
+   Поэтому при наведении title превращается в data-tip (его тоже переводит i18n), а показывает подсказку лаунчер. */
+(function initTips() {
+  let tip = null, timer = 0, cur = null;
+  const hide = () => { clearTimeout(timer); cur = null; if (tip) tip.classList.remove('on'); };
+  const place = (el) => {
+    const r = el.getBoundingClientRect();
+    const w = tip.offsetWidth, h = tip.offsetHeight, m = 8;
+    let x = r.left + r.width / 2 - w / 2;
+    x = Math.max(m, Math.min(window.innerWidth - w - m, x));
+    let y = r.bottom + 10;
+    if (y + h > window.innerHeight - m) y = r.top - h - 10;     // снизу нет места — показываем над элементом
+    tip.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+  };
+  const show = (el) => {
+    const text = el.dataset.tip;
+    if (!text || !el.isConnected) return;
+    if (!tip) { tip = document.createElement('div'); tip.className = 'vtip'; tip.setAttribute('role', 'tooltip'); document.body.appendChild(tip); }
+    tip.textContent = text;
+    place(el);
+    tip.classList.add('on');
+  };
+  document.addEventListener('mouseover', (e) => {
+    const el = e.target.closest && e.target.closest('[title],[data-tip]');
+    if (!el || el === cur) return;
+    if (el.hasAttribute('title')) {
+      if (el.title.trim()) el.dataset.tip = el.title;
+      el.removeAttribute('title');
+    }
+    hide();
+    if (!el.dataset.tip) return;
+    cur = el;
+    timer = setTimeout(() => show(el), tip && tip.classList.contains('on') ? 0 : 350);
+  }, true);
+  document.addEventListener('mouseout', (e) => { if (cur && !cur.contains(e.relatedTarget)) hide(); }, true);
+  for (const ev of ['mousedown', 'wheel', 'keydown', 'blur']) window.addEventListener(ev, hide, true);
+})();
