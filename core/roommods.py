@@ -63,7 +63,7 @@ def _jar_registers(z: zipfile.ZipFile, depth: int = 0) -> bool:
         elif name.endswith(".jar") and depth < 2:      # моды внутри мода (META-INF/jars)
             try:
                 with zipfile.ZipFile(io.BytesIO(z.read(name))) as inner:
-                    if _client_only(inner) or _is_fabric_api(inner):   # Fabric API бывает вложен в чужой мод
+                    if _is_fabric_api(inner):   # Fabric API бывает вложен в чужой мод
                         continue
                     if _jar_registers(inner, depth + 1):
                         return True
@@ -121,7 +121,9 @@ def needed_mods(mods_dir: Path, loader: str, log=print) -> list[dict]:
     for jar in jars:
         try:
             with zipfile.ZipFile(jar) as z:
-                if _client_only(z) or not _jar_registers(z):
+                # environment=client не спасает: такой мод (sounds, fallingleaves) всё равно регистрирует
+                # звуки/частицы, и гость без него получает «неизвестные записи реестра» при входе
+                if not _jar_registers(z):
                     continue
             info = read_mod(jar)
             mod_id = (info.ids[0] if info.ids else "").strip().lower()

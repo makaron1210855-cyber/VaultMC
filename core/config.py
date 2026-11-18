@@ -57,6 +57,7 @@ class LauncherConfig:
     show_online: bool = True             # друзья видят, что я в сети и во что играю
     auto_world_backups: bool = True      # после игры копировать миры, в которых играли (5 автокопий на мир)
     win_notify: bool = True              # окошки Windows о заявках в друзья и открытых мирах, когда лаунчер свёрнут
+    discord_status: bool = True          # в Discord показывать «Играет в VaultMC» (только пока игра запущена)
     download_threads: int = 32
     demo_mode: bool = False
     shortcut_offered: bool = False

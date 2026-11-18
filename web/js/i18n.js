@@ -1315,6 +1315,8 @@ const I18N_EN = {
 "Разблокировать": "Unblock",
 "был в сети ": "last seen ",
 "Уведомления Windows о друзьях": "Windows notifications about friends",
+"Статус «Играет в VaultMC» в Discord": "“Playing VaultMC” status in Discord",
+"Пока игра запущена, в Discord виден статус с названием сборки. Нужен открытый Discord на этом ПК": "While the game is running, Discord shows a status with the modpack name. Discord must be open on this PC",
 "Когда лаунчер свёрнут: «Ник хочет в друзья» и «Ник открыл мир». Во время игры не показываются; свёрнутый лаунчер раз в 3 минуты спрашивает сервер": "When the launcher is minimized: «X wants to be friends» and «X opened a world». Not shown during a game; a minimized launcher asks the server every 3 minutes",
 "Сначала разблокируйте этого игрока": "Unblock this player first",
 "Вы заблокировали ": "You blocked ",

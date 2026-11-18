@@ -30,6 +30,7 @@ from .java_runtime import ensure_runtime
 from .net import Cancelled
 from .rules import rules_allow
 from .friends import find_tunnel_address
+from . import discordrpc
 from .utils import (APP_NAME, APP_VERSION, available_ram_mb, find_java_installs, java_is_32bit, low_memory_warning, format_command, high_priority_flags, is_windows, set_process_priority,
                     java_major_version, maven_to_path, mojang_os_name, no_window_flags, offline_uuid,
                     pick_java, set_gpu_preference, timing_log)
@@ -527,6 +528,8 @@ class GameRunner:
                 _t.daemon = True
                 _t.start()
             self._state("running")
+            if self.config.discord_status:
+                discordrpc.show_playing(target.title or "", target.version_id, started)
             self._progress(1.0, "Игра запущена")
             assert self.process.stdout is not None
             last_address = ""
@@ -562,6 +565,8 @@ class GameRunner:
                     last_address = address
                     self.post("room_address", address)
             code = self.process.wait()
+            if self.config.discord_status:
+                discordrpc.clear()
             seconds = int(time.time() - started)
             crash = self._find_crash_report(target.game_dir, started) if code != 0 else None
             self._log(f"[Игра] Завершена с кодом {code} через {seconds} с")
