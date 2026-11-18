@@ -1049,6 +1049,7 @@ class Api:
                     value = int(value)
                 setattr(self._cfg, key, value)
         self._cfg.ram_gb = max(RAM_MIN, min(RAM_MAX, self._cfg.ram_gb))
+        self._cfg.download_threads = max(4, min(64, self._cfg.download_threads))
         self._cfg.ui_scale = max(90, min(125, self._cfg.ui_scale))
         if self._cfg.theme not in ("dark", "light", "auto"):
             self._cfg.theme = "dark"
@@ -1741,13 +1742,19 @@ class Api:
         self._cfg.selected_instance = instance_id
         self._save()
 
+    @staticmethod
+    def _clamp_ram(value) -> int:
+        """0 — «авто»; иначе в пределах RAM_MIN…RAM_MAX (раньше любое число шло в -Xmx как есть)."""
+        n = int(value)
+        return 0 if n <= 0 else max(RAM_MIN, min(RAM_MAX, n))
+
     def update_instance(self, instance_id: str, values: dict) -> dict:
         inst = self._inst(instance_id)
         if "name" in values and not str(values["name"]).strip():
             values = {k: v for k, v in values.items() if k != "name"}     # пустое название не сохраняем — карточка осталась бы безымянной
         for key in ("name", "ram_gb", "jvm_args", "notes", "color"):
             if key in values:
-                setattr(inst, key, int(values[key]) if key == "ram_gb" else values[key])
+                setattr(inst, key, self._clamp_ram(values[key]) if key == "ram_gb" else values[key])
         self._instances.save(inst)
         return _instance_dict(inst, self._repo.game_dir)
 

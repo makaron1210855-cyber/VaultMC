@@ -79,15 +79,18 @@ class ConfigManager:
         if self.path.exists():
             try:
                 data = json.loads(self.path.read_text(encoding="utf-8"))
+                if not isinstance(data, dict):
+                    raise ValueError("config.json: ожидался объект")  # i18n-skip: внутренняя ошибка
                 known = {k: v for k, v in data.items() if k in LauncherConfig.__dataclass_fields__}
                 cfg = LauncherConfig(**known)
                 cfg.ram_gb = max(RAM_MIN, min(RAM_MAX, int(cfg.ram_gb)))
+                cfg.download_threads = max(4, min(64, int(cfg.download_threads)))   # 0 потоков роняло бы установку
                 # после переезда ~/.neon_launcher -> ~/.vaultmc исправляем сохранённые пути
                 old = str(OLD_LAUNCHER_HOME)
                 if cfg.data_dir.startswith(old) and not Path(cfg.data_dir).exists():
                     cfg.data_dir = str(LAUNCHER_HOME) + cfg.data_dir[len(old):]
                 return cfg
-            except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            except (OSError, json.JSONDecodeError, TypeError, ValueError, AttributeError):
                 # файл повреждён: откладываем копию, иначе первое же сохранение молча сотрёт все настройки
                 # (папку файлов игры, путь к Java, память и т. д.)
                 try:

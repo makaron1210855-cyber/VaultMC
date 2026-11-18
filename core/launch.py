@@ -290,6 +290,7 @@ class GameRunner:
         self.cancel_event = threading.Event()
         self.process: subprocess.Popen | None = None
         self.busy = False
+        self._start_lock = threading.Lock()
         self.state = "idle"
         self.killed = False
 
@@ -374,9 +375,10 @@ class GameRunner:
         return path
 
     def _start(self, target, *args) -> bool:
-        if self.busy:
-            return False
-        self.busy = True
+        with self._start_lock:         # два быстрых нажатия «Играть» не должны запустить два потока
+            if self.busy:
+                return False
+            self.busy = True
         self.cancel_event.clear()
         threading.Thread(target=target, args=args, daemon=True).start()
         return True
