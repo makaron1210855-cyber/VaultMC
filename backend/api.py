@@ -1917,10 +1917,10 @@ class Api:
     def world_action(self, instance_id: str, action: str, arg: str = "", target: str = "") -> dict:
         from core import worlds as W
         inst = self._inst(instance_id)
-        if self._instance_running(inst.id) and action in ("restore", "delete", "backup", "trash_restore"):
+        if self._instance_running(inst.id) and action in ("restore", "delete", "backup", "copy", "trash_restore"):
             # копия открытого мира может оказаться битой: игра как раз может записывать его файлы
             return {"error": "Закройте игру — мир может быть открыт, и копия получилась бы неполной"
-                    if action == "backup" else "Закройте игру — мир сейчас открыт"}
+                    if action in ("backup", "copy") else "Закройте игру — мир сейчас открыт"}
         try:
             if action == "backup":
                 started = self._runner.run_task(

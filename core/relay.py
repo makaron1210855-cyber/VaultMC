@@ -149,12 +149,18 @@ class RelayHost:
             self.log("[Комната] связь с ретранслятором оборвалась, переподключаюсь")
 
     def _serve_friend(self, sid: str) -> None:
+        data = None
         try:
             data = _connect()
             data.sendall(f"DATA {sid}\n".encode())
             local = socket.create_connection(("127.0.0.1", self.local_port), timeout=10)
         except OSError as exc:
             self.log(f"[Комната] друг не подключился: {exc}")
+            if data is not None:            # соединение с ретранслятором не должно оставаться открытым
+                try:
+                    data.close()
+                except OSError:
+                    pass
             return
         _bridge(data, local)
 
@@ -250,16 +256,22 @@ class RelayGuest:
 
     def _ping_loop(self) -> None:
         while self.alive:
+            s = None
             try:
                 s = _connect(timeout=5)
                 t0 = time.perf_counter()
                 s.sendall(b"PING\n")
                 ok = _line(s) == "PONG"
                 ms = int((time.perf_counter() - t0) * 1000)
-                s.close()
                 self.rtt = ms if ok else None
             except OSError:
                 self.rtt = None
+            finally:
+                if s is not None:           # раньше при таймауте сокет оставался открытым каждые 10 с
+                    try:
+                        s.close()
+                    except OSError:
+                        pass
             for _ in range(10):
                 if not self.alive:
                     return

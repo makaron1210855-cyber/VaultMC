@@ -275,7 +275,9 @@ class P2PBridge:
                 self._forget(cid)
                 game.close()
                 continue
-            threading.Timer(15, self._drop_pending, args=(cid,)).start()   # окно так и не открыло канал
+            timer = threading.Timer(15, self._drop_pending, args=(cid,))
+            timer.daemon = True                 # не задерживает закрытие лаунчера
+            timer.start()   # окно так и не открыло канал
 
     def _forget(self, cid: str) -> None:
         """Убрать из ожидания закрытое подключение (иначе закрытые сокеты копились бы в памяти)."""

@@ -48,7 +48,8 @@ def server_url() -> str:
 # при следующем вводе пароля (сервер принимает замену, пока лаунчер помнит прежний ключ — он лежит под «ник:old»).
 def _tokens() -> dict:
     try:
-        return json.loads(TOKENS.read_text(encoding="utf-8"))
+        data = json.loads(TOKENS.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
     except (OSError, json.JSONDecodeError):
         return {}
 
