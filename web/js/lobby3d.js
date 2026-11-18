@@ -37,16 +37,25 @@ function lhGroundTexture() {
 function lhWood(w, h, d, seed, latch) {
   const c = document.createElement('canvas'); c.width = 2 * d + 2 * w; c.height = d + h;
   const g = c.getContext('2d'), r = rng(seed);
-  const cols = ['#8a5a2b', '#7d4f24', '#946133', '#6f4620'];
+  const wood = ['#9a6532', '#8a5a2b', '#a46f3a', '#86572a'];
   const faces = s3Faces(w, h, d);
-  for (const [fx, fy, fw, fh] of Object.values(faces)) {
+  for (const [name, [fx, fy, fw, fh]] of Object.entries(faces)) {
+    const sides = name !== 'top' && name !== 'bottom' && fw > 6;      // железные полосы на боковых гранях
     for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
       const edge = x === 0 || y === 0 || x === fw - 1 || y === fh - 1;
-      g.fillStyle = edge ? '#4a2c12' : cols[(Math.floor(y / 2) + Math.floor(r() * 2)) % 4];
-      g.fillRect(fx + x, fy + y, 1, 1);
+      let col = wood[(Math.floor(y / 2) + Math.floor(r() * 2)) % 4];   // доски
+      if (r() < 0.1) col = name === 'top' ? '#b57f48' : '#7a4c24';       // прожилки
+      if (y === 1 && name !== 'bottom') col = '#6a3f1d';                 // стык досок
+      if (sides && (x === Math.round(fw * 0.2) || x === Math.round(fw * 0.8))) col = '#5b6069';   // железная полоса
+      if (edge) col = '#3d220e';                                         // тёмный контур
+      g.fillStyle = col; g.fillRect(fx + x, fy + y, 1, 1);
     }
   }
-  if (latch) { const [fx, fy, fw, fh] = faces.front; g.fillStyle = '#e8c44a'; g.fillRect(fx + Math.floor(fw / 2) - 1, fy + fh - 2, 2, 2); }
+  if (latch) {   // замок: медная пластина с золотой серединкой
+    const [fx, fy, fw, fh] = faces.front, cx = fx + Math.floor(fw / 2);
+    g.fillStyle = '#8a6a1a'; g.fillRect(cx - 2, fy, 4, fh);
+    g.fillStyle = '#f2d15a'; g.fillRect(cx - 1, fy, 2, fh);
+  }
   return c;
 }
 

@@ -287,7 +287,7 @@ input[type=range]::-webkit-slider-thumb {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------------------------------------------------------------- главный экран: витрина */
-.lobby2 { display: grid; grid-template-rows: minmax(330px, 1fr) auto auto; gap: 12px; min-height: 100%; }
+.lobby2 { display: grid; grid-template-rows: minmax(250px, 1fr) auto auto; gap: 12px; min-height: 100%; }
 .hero {
   position: relative; overflow: hidden; display: grid; grid-template-columns: minmax(340px, 1.1fr) minmax(260px, .9fr);
   background:
