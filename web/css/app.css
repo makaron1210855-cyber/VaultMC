@@ -1145,7 +1145,10 @@ label.field > span, div.field > span { font-size: 11.5px; font-weight: 800; lett
 select.input { appearance: none; padding-right: 36px; cursor: pointer;
   background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
   background-position: calc(100% - 18px) 18px, calc(100% - 13px) 18px; background-size: 5px 5px; background-repeat: no-repeat; }
-select.input option { background: var(--panel2); }
+select.input { color: var(--text); }
+/* список выбора: явные цвета, иначе системный список показывает светлый текст на светлом фоне */
+select.input option { background: var(--panel2); color: var(--text); }
+select.input option:checked { background: rgba(var(--accent-rgb), .25); color: var(--text); }
 
 /* ---------------------------------------------------------------- переключатели с бегущей подложкой (.seg) */
 .seg { position: relative; padding: 4px; gap: 2px; border-radius: 999px; background: rgba(0, 0, 0, .3); border: 1px solid rgba(var(--ov), .07); }
