@@ -175,6 +175,8 @@ body::after {   /* тонкая светящаяся линия под верх�
 .h2 { font-size: 13px; font-weight: 700; color: var(--muted); margin: 0 0 10px; text-transform: none; }
 .row { display: flex; align-items: center; gap: 10px; }
 .row.wrap { flex-wrap: wrap; }
+/* атрибут hidden должен скрывать всегда: иначе display:flex у .row (и подобных) его перебивает */
+[hidden] { display: none !important; }
 .grow { flex: 1; min-width: 0; }
 .muted { color: var(--muted); }
 .faint { color: var(--faint); }
