@@ -35,7 +35,11 @@ function lhGroundTexture() {
 
 // текстура сундука (web/img/chest-diffuse.png, 4096 → 512): из неё берём цвет досок; null — рисуем процедурно
 const LH_CHEST_TEX = 'img/chest-diffuse.png';
-const LH_ATLAS_WOOD = { x: 120, y: 8, w: 96, h: 96 };   // участок с досками на развёртке (в масштабе 512)
+// куски развёртки сундука в пикселях 64×64 (стандартная раскладка Minecraft): [x, y, ширина, высота]
+const LH_UV = {
+  base: { top: [14, 19, 14, 14], bottom: [28, 19, 14, 14], front: [14, 33, 14, 10], back: [42, 33, 14, 10], left: [0, 33, 14, 10], right: [28, 33, 14, 10] },
+  lid: { top: [14, 0, 14, 14], bottom: [28, 0, 14, 14], front: [14, 14, 14, 5], back: [42, 14, 14, 5], left: [0, 14, 14, 5], right: [28, 14, 14, 5] },
+};
 let lhChestAtlas = null;   // canvas | false (не загрузилась) | null (ещё не пробовали)
 async function lhLoadChestAtlas() {
   if (lhChestAtlas !== null) return lhChestAtlas;
@@ -57,29 +61,27 @@ function lhWood(w, h, d, seed, latch, K = LH_WOOD_K) {
   const atlas = lhChestAtlas || null;
   const px = atlas ? atlas.getContext('2d').getImageData(0, 0, 512, 512).data : null;
   const faces = s3Faces(w, h, d);
+  const uv = LH_UV[latch ? 'lid' : 'base'];
   for (const [name, [fx, fy, fw, fh]] of Object.entries(faces)) {
-    const sides = name !== 'top' && name !== 'bottom' && fw > 6;      // железные полосы на боковых гранях
     const sw = fw * K, sh = fh * K;
+    const [ux, uy, uw, uh] = uv[name] || [0, 0, 1, 1];   // кусок развёртки этой грани, в пикселях 64×64
     for (let sy = 0; sy < sh; sy++) for (let sx = 0; sx < sw; sx++) {
-      const x = Math.floor(sx / K), y = Math.floor(sy / K);            // координаты блока
-      const edge = x === 0 || y === 0 || x === fw - 1 || y === fh - 1;
-      let col = wood[(Math.floor(y / 2) + x) % 4];                     // доски (без текстуры)
-      if (px) {   // цвет из текстуры: участок досок, растянутый на грань с сохранением деталей
-        const ax = LH_ATLAS_WOOD.x + Math.floor((sx + 0.5) * LH_ATLAS_WOOD.w / sw);
-        const ay = LH_ATLAS_WOOD.y + Math.floor((sy + 0.5) * LH_ATLAS_WOOD.h / sh);
+      const edge = sx < 2 || sy < 2 || sx >= sw - 2 || sy >= sh - 2;   // тёмный железный контур по краям граней
+      let col = wood[(Math.floor(sy / 4) + Math.floor(sx / 4)) % 4];   // доски (без текстуры)
+      if (px) {   // цвет из текстуры: кусок развёртки этой грани, растянутый на грань
+        const ax = Math.floor((ux + (sx + 0.5) * uw / sw) * 8);
+        const ay = Math.floor((uy + (sy + 0.5) * uh / sh) * 8);
         const i = (ay * 512 + ax) * 4;
         col = `rgb(${px[i]},${px[i + 1]},${px[i + 2]})`;
       }
-      if (y === 1 && name !== 'bottom') col = '#5a3516';                 // стык досок
-      if (sides && (x === Math.round(fw * 0.2) || x === Math.round(fw * 0.8))) col = '#5b6069';   // железная полоса
-      if (edge) col = '#3d220e';                                         // тёмный контур
+      if (edge) col = '#2b2b2f';
       g.fillStyle = col; g.fillRect(fx * K + sx, fy * K + sy, 1, 1);
     }
   }
-  if (latch) {   // замок: медная пластина с золотой серединкой
+  if (latch) {   // железный замок на крышке: серебристая пластина
     const [fx, fy, fw, fh] = faces.front, cx = (fx + Math.floor(fw / 2)) * K;
-    g.fillStyle = '#8a6a1a'; g.fillRect(cx - 2 * K, fy * K, 4 * K, fh * K);
-    g.fillStyle = '#f2d15a'; g.fillRect(cx - K, fy * K, 2 * K, fh * K);
+    g.fillStyle = '#6b6f78'; g.fillRect(cx - 2 * K, fy * K, 4 * K, fh * K);
+    g.fillStyle = '#d9dee6'; g.fillRect(cx - K, fy * K + K, 2 * K, Math.max(1, fh * K - 2 * K));
   }
   return c;
 }
