@@ -13,7 +13,10 @@ import socket
 import threading
 import time
 
-RELAY_HOST = "13.143.207.131"   # VPS в Москве
+# Ретрансляторы VaultMC. Комната живёт на одном из них: хозяин выбирает быстрейший (pick_relay),
+# гость заходит на тот же адрес, который лежит в данных комнаты. Старые комнаты без адреса — на RELAY_HOST.
+RELAY_HOSTS = ("37.139.51.156", "13.143.207.131")   # Новосибирск, Москва
+RELAY_HOST = "13.143.207.131"                        # VPS в Москве (запасной адрес для старых комнат)
 CONTROL_PORT = 7000
 
 # причины отказа ретранслятора → текст для игрока
@@ -45,15 +48,15 @@ def _line(sock: socket.socket, limit: int = 128) -> str:
     return out.decode("ascii", "replace").strip()
 
 
-def _connect(timeout: float = 10.0) -> socket.socket:
-    s = socket.create_connection((RELAY_HOST, CONTROL_PORT), timeout=timeout)
+def _connect(timeout: float = 10.0, host: str | None = None) -> socket.socket:
+    s = socket.create_connection((host or RELAY_HOST, CONTROL_PORT), timeout=timeout)
     s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
     return s
 
 
-def _ask(command: str, timeout: float = 10.0) -> tuple[socket.socket, str]:
-    s = _connect(timeout)
+def _ask(command: str, timeout: float = 10.0, host: str | None = None) -> tuple[socket.socket, str]:
+    s = _connect(timeout, host)
     try:
         s.sendall((command + "\n").encode())
         return s, _line(s)
@@ -70,10 +73,11 @@ def _refusal(answer: str) -> RelayError:
 
 
 class RelayHost:
-    def __init__(self, local_port: int, log, on_port, token: str | None = None):
+    def __init__(self, local_port: int, log, on_port, token: str | None = None, host: str | None = None):
         self.local_port = local_port
         self.log = log
         self.on_port = on_port          # вызывается с публичным портом (и после переподключения)
+        self.host = host or RELAY_HOST  # ретранслятор, на котором открыта комната
         self.token = token or secrets.token_hex(16)
         self.secure = True              # False — ретранслятор старой версии, комната без ключа
         self.public_port = 0
@@ -108,7 +112,7 @@ class RelayHost:
     def _open(self) -> tuple[socket.socket, int]:
         if self.secure:
             want = f" {self.public_port}" if self.public_port else ""
-            ctl, first = _ask(f"HOST2 {self.token}{want}", timeout=15)
+            ctl, first = _ask(f"HOST2 {self.token}{want}", timeout=15, host=self.host)
             if first.startswith("PORT "):
                 return ctl, int(first[5:])
             ctl.close()
@@ -117,7 +121,7 @@ class RelayHost:
             # ретранслятор старой версии закрывает соединение на незнакомую команду — открываем по-старому
             self.secure = False
             self.log("[Комната] ретранслятор старой версии — комната без ключа (как раньше)")
-        ctl, first = _ask("HOST", timeout=15)
+        ctl, first = _ask("HOST", timeout=15, host=self.host)
         if not first.startswith("PORT "):
             ctl.close()
             raise _refusal(first) if first else OSError("сервер не выдал порт комнаты")
@@ -151,7 +155,7 @@ class RelayHost:
     def _serve_friend(self, sid: str) -> None:
         data = None
         try:
-            data = _connect()
+            data = _connect(host=self.host)
             data.sendall(f"DATA {sid}\n".encode())
             local = socket.create_connection(("127.0.0.1", self.local_port), timeout=10)
         except OSError as exc:
@@ -168,10 +172,11 @@ class RelayHost:
 class RelayGuest:
     """Гость: адрес 127.0.0.1:<порт> для игры, каждое подключение игры идёт в комнату друга через ретранслятор."""
 
-    def __init__(self, port: int, token: str, log):
+    def __init__(self, port: int, token: str, log, host: str | None = None):
         self.port = int(port)
         self.token = token
         self.log = log
+        self.host = host or RELAY_HOST
         self.alive = True
         self.local_port = 0
         self.rtt: int | None = None     # мс до ретранслятора, меряется раз в 10 с
@@ -184,7 +189,7 @@ class RelayGuest:
     def check(self) -> None:
         """Есть ли такая комната и подходит ли ключ — до запуска игры. Бросает RelayError с понятным текстом."""
         try:
-            s, answer = _ask(f"CHECK {self.port} {self.token}")
+            s, answer = _ask(f"CHECK {self.port} {self.token}", host=self.host)
             s.close()
         except OSError as exc:
             raise RelayError(f"Ретранслятор VaultMC недоступен: {exc}", "down") from None
@@ -222,7 +227,7 @@ class RelayGuest:
 
     def _serve_game(self, game: socket.socket) -> None:
         try:
-            relay, answer = _ask(f"JOIN {self.port} {self.token}", timeout=20)
+            relay, answer = _ask(f"JOIN {self.port} {self.token}", timeout=20, host=self.host)
         except OSError as exc:
             self._fail(game, f"Ретранслятор VaultMC недоступен: {exc}")
             return
@@ -256,18 +261,18 @@ class RelayGuest:
 
     def _ping_loop(self) -> None:
         while self.alive:
-            self.rtt = ping_once()
+            self.rtt = ping_once(host=self.host)
             for _ in range(10):
                 if not self.alive:
                     return
                 time.sleep(1)
 
 
-def ping_once(timeout: float = 5.0) -> int | None:
+def ping_once(timeout: float = 5.0, host: str | None = None) -> int | None:
     """Задержка до ретранслятора в мс (PING → PONG), None — не ответил. Время соединения не считается."""
     s = None
     try:
-        s = _connect(timeout=timeout)
+        s = _connect(timeout=timeout, host=host)
         t0 = time.perf_counter()
         s.sendall(b"PING\n")
         ok = _line(s) == "PONG"
@@ -283,10 +288,20 @@ def ping_once(timeout: float = 5.0) -> int | None:
                 pass
 
 
-def ping_best(tries: int = 3, timeout: float = 3.0) -> int | None:
+def ping_best(tries: int = 3, timeout: float = 3.0, host: str | None = None) -> int | None:
     """Лучший из нескольких замеров: один случайно медленный замер не должен решать, каким путём идти."""
-    got = [ms for ms in (ping_once(timeout) for _ in range(max(1, tries))) if ms is not None]
+    got = [ms for ms in (ping_once(timeout, host) for _ in range(max(1, tries))) if ms is not None]
     return min(got) if got else None
+
+
+def pick_relay(tries: int = 2, timeout: float = 2.0) -> tuple[str | None, int | None]:
+    """Ближайший ретранслятор из RELAY_HOSTS: (адрес, мс). Адрес None — ни один не ответил."""
+    best_host, best_ms = None, None
+    for host in RELAY_HOSTS:
+        ms = ping_best(tries, timeout, host)
+        if ms is not None and (best_ms is None or ms < best_ms):
+            best_host, best_ms = host, ms
+    return best_host, best_ms
 
 
 def _bridge(remote: socket.socket, local: socket.socket, count=None) -> None:

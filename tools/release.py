@@ -139,6 +139,8 @@ def build_installer(version: str) -> Path:
             shutil.copytree(item, app / item.name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.log"))
         else:
             shutil.copy2(item, app / item.name)
+    # Ключ CurseForge вшивается в установщик (решение владельца, 18.11.2026): как в Prism Launcher.
+    # Архив исходников по-прежнему собирается без ключа (build_source).
     sys.path.insert(0, str(ROOT))
     from core.integrity import build as build_integrity   # files.json: лаунчер сверяет свои файлы при запуске
     log(f"контрольные суммы файлов лаунчера: {build_integrity(app, version)}")

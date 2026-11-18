@@ -20,7 +20,7 @@ from pathlib import Path
 
 from .instances import PACK_EXT, Instance, InstanceManager
 from .modpacks import install_mrpack_file
-from .modsources import CURSEFORGE_API, MODRINTH_API, ModSourceError
+from .modsources import CURSEFORGE_API, MODRINTH_API, ModSourceError, cf_endpoint
 from .net import download, get_json, post_json
 from .forge import loader_id, parse_loader_id
 from .versions import fabric_id, parse_fabric_id
@@ -138,8 +138,8 @@ def export_curseforge(inst: Instance, dest: Path, api_key: str = "", log=print) 
     if api_key and mods:
         try:
             prints = {cf_fingerprint(f.read_bytes()): f for f in mods}
-            result = post_json(f"{CURSEFORGE_API}/fingerprints/432", {"fingerprints": list(prints)},
-                               headers={"x-api-key": api_key})
+            base, hdr = cf_endpoint(api_key)
+            result = post_json(f"{base}/fingerprints/432", {"fingerprints": list(prints)}, headers=hdr)
             for match in result.get("data", {}).get("exactMatches", []):
                 file = match.get("file", {})
                 if file.get("fileFingerprint") in prints:
@@ -213,14 +213,15 @@ def _import_curseforge(pack: Path, manager: InstanceManager, api_key: str, log, 
     files = manifest.get("files", [])
     if files and not api_key:
         problems.append(f"{len(files)} модов не скачано: для CurseForge нужен API-ключ (Настройки)")
-        return inst, problems
+        return inst, problems   # api_key пустой только если сервер VaultMC не настроен (см. cf_endpoint)
     from concurrent.futures import ThreadPoolExecutor
     done = [0]
 
     def one(entry):          # каждый мод: узнать ссылку у CurseForge и скачать — 8 модов одновременно
         try:
-            info = get_json(f"{CURSEFORGE_API}/mods/{entry['projectID']}/files/{entry['fileID']}",
-                            headers={"x-api-key": api_key}).get("data", {})
+            base, hdr = cf_endpoint(api_key)
+            info = get_json(f"{base}/mods/{entry['projectID']}/files/{entry['fileID']}",
+                            headers=hdr).get("data", {})
             if not info.get("downloadUrl"):
                 return f"{info.get('displayName') or entry['projectID']}: автор запретил скачивание из лаунчеров"
             download(info["downloadUrl"], inst.mods_dir / info["fileName"])

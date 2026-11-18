@@ -16,7 +16,7 @@ import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from .modsources import CURSEFORGE_API, MODRINTH_API, ModIndex, _compatible_loaders
+from .modsources import CURSEFORGE_API, MODRINTH_API, ModIndex, _compatible_loaders, cf_endpoint
 from .net import download, post_json
 
 CF_LOADER_NAMES = {"fabric": "Fabric", "forge": "Forge", "neoforge": "NeoForge", "quilt": "Quilt"}
@@ -162,8 +162,9 @@ def installed_keys(game_dir: Path, cf_key: str = "", log=print) -> dict:
         from .packformats import cf_fingerprint
         try:
             prints = [cf_fingerprint(f.read_bytes()) for f in mods]
-            data = post_json(f"{CURSEFORGE_API}/fingerprints/432", {"fingerprints": prints},
-                             headers={"x-api-key": cf_key}).get("data", {})
+            base, hdr = cf_endpoint(cf_key)
+            data = post_json(f"{base}/fingerprints/432", {"fingerprints": prints},
+                             headers=hdr).get("data", {})
             by_print = {p: f for p, f in zip(prints, mods)}
             out["curseforge"] = {str((m.get("file") or {}).get("modId")) for m in data.get("exactMatches", [])
                                  if (m.get("file") or {}).get("modId")}
@@ -218,8 +219,9 @@ def check(game_dir: Path, game_version: str, loader: str, cf_key: str = "", log=
         from .packformats import cf_fingerprint
         try:
             prints = {cf_fingerprint(f.read_bytes()): f for f in rest}
-            data = post_json(f"{CURSEFORGE_API}/fingerprints/432", {"fingerprints": list(prints)},
-                             headers={"x-api-key": cf_key}).get("data", {})
+            base, hdr = cf_endpoint(cf_key)
+            data = post_json(f"{base}/fingerprints/432", {"fingerprints": list(prints)},
+                             headers=hdr).get("data", {})
             names = {CF_LOADER_NAMES.get(x, "") for x in _compatible_loaders(loader, game_version)} - {""}
             for match in data.get("exactMatches", []):
                 current = match.get("file", {})
@@ -280,8 +282,9 @@ def changelog(source: str, project_id: str, version_id: str, cf_key: str = "") -
     if source == "modrinth":
         return _plain(get_json(f"{MODRINTH_API}/version/{version_id}", timeout=12, attempts=2).get("changelog") or "")
     if source == "curseforge" and cf_key and _ID.match(str(project_id or "")):
-        data = get_json(f"{CURSEFORGE_API}/mods/{project_id}/files/{version_id}/changelog",
-                        headers={"x-api-key": cf_key}, timeout=12, attempts=2)
+        base, hdr = cf_endpoint(cf_key)
+        data = get_json(f"{base}/mods/{project_id}/files/{version_id}/changelog",
+                        headers=hdr, timeout=12, attempts=2)
         return _plain(data.get("data") or "")
     raise ValueError("источник не поддерживается")
 

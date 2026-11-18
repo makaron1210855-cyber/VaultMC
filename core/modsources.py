@@ -15,11 +15,25 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
+from . import keys
 from .net import download, get_json, post_json
 
 MODRINTH_API = "https://api.modrinth.com/v2"
 CURSEFORGE_API = "https://api.curseforge.com/v1"
 CF_GAME_MINECRAFT = 432
+# Метка вместо ключа: запросы к CurseForge идут через сервер VaultMC, а ключ хранится только там
+CF_VIA_SERVER = "via-server"
+
+
+def cf_endpoint(api_key: str) -> tuple[str, dict]:
+    """Куда и с какими заголовками слать запросы к CurseForge.
+    Свой ключ (настройки или dev-ключ) — напрямую; иначе — через сервер VaultMC, он добавляет ключ сам."""
+    if api_key and api_key != CF_VIA_SERVER:
+        return CURSEFORGE_API, {"x-api-key": api_key}
+    server = (keys.SKIN_SERVER or "").strip().rstrip("/")
+    if not server:
+        raise ModSourceError("Каталог CurseForge недоступен: сервер VaultMC не настроен")
+    return f"{server}/api/cf", {}
 CF_CLASSES = {"mod": 6, "resourcepack": 12, "shader": 6552, "modpack": 4471}
 CF_LOADERS = {"forge": 1, "fabric": 4, "quilt": 5, "neoforge": 6}
 CF_REQUIRED = 3
@@ -343,8 +357,9 @@ def sync_index(game_dir: Path, cf_key: str = "", log=print) -> int:
                    if (todo[key][0], todo[key][1].name) not in known_now}
             if not fps:
                 raise StopIteration
-            res = post_json(f"{CURSEFORGE_API}/fingerprints/{CF_GAME_MINECRAFT}", {"fingerprints": list(fps)},
-                            headers={"x-api-key": cf_key}).get("data", {})
+            base, hdr = cf_endpoint(cf_key)
+            res = post_json(f"{base}/fingerprints/{CF_GAME_MINECRAFT}", {"fingerprints": list(fps)},
+                            headers=hdr).get("data", {})
             for m in res.get("exactMatches", []):
                 fp = m.get("file", {}).get("fileFingerprint")
                 key = fps.get(fp)
@@ -447,12 +462,11 @@ class CurseForgeSource:
     name, title = "curseforge", "CurseForge"
 
     def __init__(self, api_key: str):
-        if not api_key:
-            raise ModSourceError("Для CurseForge нужен бесплатный API-ключ: Настройки → Каталоги")
-        self.headers = {"x-api-key": api_key, "Accept": "application/json"}
+        self.base, hdr = cf_endpoint(api_key)
+        self.headers = {**hdr, "Accept": "application/json"}
 
     def _get(self, path: str, params: dict | None = None):
-        return get_json(f"{CURSEFORGE_API}{path}" + (f"?{urlencode(params)}" if params else ""), headers=self.headers)
+        return get_json(f"{self.base}{path}" + (f"?{urlencode(params)}" if params else ""), headers=self.headers)
 
     def search(self, query: str, game_version: str, loader: str, project_type: str = "mod",
                sort: str = "Популярные", offset: int = 0, limit: int = 20) -> tuple[list[ModHit], int]:

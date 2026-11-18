@@ -164,9 +164,16 @@ test('список модов в комнате очищается: плохой
 test('данные ретранслятора проходят в комнату и статус, кривые отбрасываются', async () => {
   const e = env();
   await reg(e, 'Host_1', TOKEN_A);
-  const relay = { port: 25601, token: 'f'.repeat(32) };
+  const relay = { port: 25601, token: 'f'.repeat(32), host: '37.139.51.156' };
   const open = await post(e, '/api/room', { ...as('Host_1', TOKEN_A), action: 'open', info: { relay } });
   assert.deepEqual((await get(e, '/api/room/' + open.data.code)).data.info.relay, relay);
+  // старые лаунчеры без адреса ретранслятора: host = null, гость возьмёт запасной
+  const oldRelay = { port: 25602, token: 'e'.repeat(32) };
+  const old = await post(e, '/api/room', { ...as('Host_1', TOKEN_A), action: 'open', info: { relay: oldRelay } });
+  assert.deepEqual((await get(e, '/api/room/' + old.data.code)).data.info.relay, { ...oldRelay, host: null });
+  // кривой адрес ретранслятора отбрасывается (host = null), сама комната остаётся
+  const badHost = await post(e, '/api/room', { ...as('Host_1', TOKEN_A), action: 'open', info: { relay: { ...oldRelay, host: 'evil; rm' } } });
+  assert.equal((await get(e, '/api/room/' + badHost.data.code)).data.info.relay.host, null);
   const bad = await post(e, '/api/room', { ...as('Host_1', TOKEN_A), action: 'open', info: { relay: { port: '1; rm', token: 'zz' } } });
   assert.equal((await get(e, '/api/room/' + bad.data.code)).data.info.relay, null);
 

@@ -38,7 +38,7 @@ from core.mods import ModManager
 from core.modsources import (OPTIMIZATION_FORGE, OPTIMIZATION_PACK, SORTS, install_optimization_pack,
                              optimization_candidates, TUNNEL_MODS, install_tunnel, DistributionBlocked, ModrinthSource, ModIndex, install_pack,
                              sync_index,
-                             CF_GAME_MINECRAFT, CURSEFORGE_API, make_source)
+                             CF_GAME_MINECRAFT, CF_VIA_SERVER, CURSEFORGE_API, make_source)
 from core.net import HttpError, download, get_json
 from core.utils import (APP_NAME, APP_VERSION, LAUNCHER_HOME, create_desktop_shortcut, find_java_installs,
                         format_duration, java_major_version, open_in_file_manager, timing_log, total_ram_gb)
@@ -338,20 +338,21 @@ class Api:
         threading.Thread(target=job, daemon=True).start()
 
     def _relay_start(self, port: int) -> None:
-        from core.relay import RelayHost
+        from core.relay import RelayHost, pick_relay
         self._relay_stop()
+        host, ms = pick_relay()   # ближайший из RELAY_HOSTS (None — ни один не ответил, возьмём запасной)
+        self._on_runner_event("log", f"[Комната] ретранслятор: {host or 'запасной'}" + (f", {ms} мс" if ms is not None else ""))
 
         def on_port(pub: int) -> None:
-            from core.relay import RELAY_HOST
-            if relay.secure:   # с ключом: гостям — порт и ключ (заходят через свой лаунчер), адрес не публикуем
-                self._room_relay = {"port": pub, "token": relay.token}
+            if relay.secure:   # с ключом: гостям — адрес ретранслятора, порт и ключ (заходят через свой лаунчер)
+                self._room_relay = {"port": pub, "token": relay.token, "host": relay.host}
             else:              # ретранслятор старой версии — как раньше, общий адрес
                 self._room_relay = None
-                self._room_address = f"{RELAY_HOST}:{pub}"
+                self._room_address = f"{relay.host}:{pub}"
             self._room_update()
             self._presence_soon()
             self._emit("room_address", self._room_address)
-        relay = RelayHost(port, lambda m: self._on_runner_event("log", m), on_port)
+        relay = RelayHost(port, lambda m: self._on_runner_event("log", m), on_port, host=host)
         self._relay = relay
         try:
             relay.start()
@@ -479,14 +480,17 @@ class Api:
         return {"ok": True}
 
     # ---------------------------------------------------------------- гость через ретранслятор VaultMC
-    def relay_guest_start(self, host: str, port, token: str) -> dict:
+    def relay_guest_start(self, host: str, port, token: str, relay_host: str | None = None) -> dict:
         """Зайти к другу через ретранслятор: проверяем комнату, поднимаем мост на 127.0.0.1 и кладём мир друга
-        в «Сетевую игру». Вылетел или вышел в меню — заходите оттуда снова, мост живёт до закрытия игры."""
+        в «Сетевую игру». Вылетел или вышел в меню — заходите оттуда снова, мост живёт до закрытия игры.
+        relay_host — адрес ретранслятора, на котором открыта комната (из данных комнаты; None — запасной)."""
         from core.relay import RelayError, RelayGuest
         if not re.fullmatch(r"[0-9a-f]{32}", str(token or "")) or not str(port).isdigit():
             return {"error": "Неверные данные комнаты", "reason": "bad"}
+        if relay_host is not None and not re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", str(relay_host)):
+            relay_host = None
         self.relay_guest_stop()
-        guest = RelayGuest(int(port), str(token), lambda m: self._on_runner_event("log", m))
+        guest = RelayGuest(int(port), str(token), lambda m: self._on_runner_event("log", m), relay_host)
         try:
             guest.check()
         except RelayError as exc:
@@ -527,8 +531,9 @@ class Api:
 
     def relay_ping(self) -> dict:
         """Задержка до ретранслятора VaultMC (лучшая из трёх) — чтобы выбрать путь к другу. ms = None — не отвечает."""
-        from core.relay import ping_best
-        return {"ms": ping_best()}
+        from core.relay import pick_relay
+        host, ms = pick_relay()
+        return {"ms": ms, "host": host}
 
     def guest_server_set(self, host: str, address: str) -> dict:
         """Положить мир друга в «Сетевую игру» с готовым адресом (переход на e4mc во время игры)."""
@@ -782,7 +787,7 @@ class Api:
 
     @property
     def _cf_key(self) -> str:
-        """Ключ игрока из настроек, иначе — встроенный ключ разработчика (core/keys.py)."""
+        """Ключ игрока из настроек, иначе — встроенный ключ разработчика (core/keys.py), иначе — через сервер VaultMC."""
         user = (self._cfg.curseforge_api_key or "").strip()
         builtin = keys.CURSEFORGE_API_KEY.strip()
         # Старый ключ из настроек (времён Neon) мог оказаться неверным, а поле теперь скрыто.
@@ -798,7 +803,7 @@ class Api:
                     user = ""
             except Exception:  # noqa: BLE001 — нет сети: оставляем как есть
                 pass
-        return user or builtin
+        return user or builtin or CF_VIA_SERVER
 
     def _save(self) -> None:
         self._cfg_manager.save()
@@ -989,7 +994,14 @@ class Api:
         """Скачивает установщик новой версии и запускает его (он закроет лаунчер и откроет новую версию)."""
         info = getattr(self, "_update_info", None)
         if not info or not info.get("available"):
-            return {"error": "Сначала проверьте обновления"}
+            # сведения о проверке потерялись (например, проверка шла в фоне) — проверяем заново, а не отказываем
+            try:
+                info = updater.check()
+            except updater.UpdateError as exc:
+                return {"error": str(exc)}
+            self._update_info = info
+            if not info.get("available"):
+                return {"error": "У вас последняя версия VaultMC"}
         if self._runner.state in ("running", "preparing"):
             return {"error": "Закройте игру — обновление начнётся после неё"}
         if self._runner.state == "installing" or getattr(self._runner, "busy", False):
@@ -2503,7 +2515,7 @@ class Api:
                      f"встроенный={key == keys.CURSEFORGE_API_KEY.strip()} код={__file__} pid={os.getpid()}")
                 # Повтор напрямую со встроенным ключом — вдруг в памяти остался старый
                 try:
-                    hits, total = make_source(source, keys.CURSEFORGE_API_KEY.strip()).search(
+                    hits, total = make_source(source, keys.CURSEFORGE_API_KEY.strip() or CF_VIA_SERVER).search(
                         query, game if project_type != "modpack" else "", loader, project_type,
                         sort, page * limit, limit)
                     _log("CurseForge: повтор со встроенным ключом прошёл")

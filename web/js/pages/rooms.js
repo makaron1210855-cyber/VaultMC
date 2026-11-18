@@ -557,7 +557,7 @@ async function joinFriend(name, st, code = '') {
   // Если у друга открыты и ретранслятор, и e4mc — сначала меряем оба и идём через более быстрый (при равенстве — ретранслятор).
   if (st.relay && st.room && await e4mcIsFaster(st)) return viaE4mc(name, st.room, '', st);
   if (st.relay) {
-    const r = await safe(api.relay_guest_start(name, st.relay.port, st.relay.token));
+    const r = await safe(api.relay_guest_start(name, st.relay.port, st.relay.token, st.relay.host || null));
     if (r && r.address) {
       toast(`Захожу к ${name} через ретранслятор VaultMC`);
       watchPath(name, st, 'relay');
@@ -622,7 +622,7 @@ function watchPath(name, st, mode, address = '') {
 /* Переключение во время игры: готовим новый путь и кладём мир друга в «Сетевую игру». Текущее соединение не рвём —
    игрок сам выходит из мира и заходит снова, когда ему удобно. */
 async function switchToRelay(name, st) {
-  const r = await safe(api.relay_guest_start(name, st.relay.port, st.relay.token));
+  const r = await safe(api.relay_guest_start(name, st.relay.port, st.relay.token, st.relay.host || null));
   if (!r || !r.address) {
     if (r && r.error) toast(r.error, 'error', 9000);
     return;
@@ -643,7 +643,7 @@ const JOINED = { name: '', st: null };
 document.addEventListener('p2p-lost', async () => {
   const { name, st } = JOINED;
   if (!st || !st.relay || S.state !== 'running') return;
-  const r = await safe(api.relay_guest_start(name, st.relay.port, st.relay.token));
+  const r = await safe(api.relay_guest_start(name, st.relay.port, st.relay.token, st.relay.host || null));
   if (r && r.address) {
     watchPath(name, st, 'relay');
     toast(`Прямая связь с ${name} оборвалась. Зайдите снова: «Сетевая игра» → «VaultMC · ${name}» — теперь через ретранслятор`, 'warn', 15000);

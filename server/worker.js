@@ -64,6 +64,7 @@ export default {
         const ct = path.match(/^\/(?:csl\/)?textures\/([0-9a-f]{40})([sc])([a-z0-9_]{1,16})$/);
         if (ct) return cslTexture(env, ct[1], ct[2] === 's' ? 'skin' : 'cape', ct[3]);
         if (path === '/api/stats') return statsRead(env, request);
+        if (path.startsWith('/api/cf/')) return cfProxy(env, request, url, path.slice('/api/cf/'.length), ip);
         if (path === '/api/status' || path === '/') return json({ ok: true, service: 'VaultMC skins', version: 6 });
         const sh = path.match(/^\/api\/share\/([A-Z0-9]{6})$/);
         if (sh) return url.searchParams.has('brief') ? shareBrief(env, sh[1]) : getShare(env, sh[1]);
@@ -72,6 +73,7 @@ export default {
         return new Response('Not found', { status: 404 });
       }
       if (request.method !== 'POST') return json({ error: 'Метод не поддерживается' }, 405);
+      if (path.startsWith('/api/cf/')) return cfProxy(env, request, url, path.slice('/api/cf/'.length), ip);
       const body = await request.json().catch(() => null);
       if (!body || typeof body !== 'object') return json({ error: 'Пустой запрос' }, 400);
       if (path === '/api/stat') return social(env, { op: 'stat', ip, body });   // анонимная статистика падений (только с согласия игрока)
@@ -100,6 +102,42 @@ export default {
     }
   },
 };
+
+/* Прокси к каталогу CurseForge: ключ разработчика лежит в секрете CF_KEY (npx wrangler secret put CF_KEY),
+ * игроки его не видят. Пускаем только то, что нужно лаунчеру: поиск, файлы модов, отпечатки, ссылки на скачивание.
+ * Лимит — 120 запросов в минуту с одного адреса (счётчики в памяти этого экземпляра воркера). */
+const CF_API = 'https://api.curseforge.com/v1/';
+const CF_ALLOWED = /^(games\/432|mods\/search|mods\/\d{1,9}(\/files(\/\d{1,9}(\/changelog)?)?)?|fingerprints\/432)$/;
+const cfHits = new Map();
+
+function cfAllowed(ip) {
+  const now = Date.now();
+  const recent = (cfHits.get(ip) || []).filter((t) => now - t < MIN);
+  if (recent.length >= 120) { cfHits.set(ip, recent); return false; }
+  recent.push(now);
+  cfHits.set(ip, recent);
+  if (cfHits.size > 5000) cfHits.clear();
+  return true;
+}
+
+async function cfProxy(env, request, url, rest, ip) {
+  if (!env.CF_KEY) return json({ error: 'Каталог CurseForge на сервере не настроен' }, 503);
+  if (!CF_ALLOWED.test(rest)) return json({ error: 'Такой запрос к каталогу не разрешён' }, 404);
+  if (!cfAllowed(ip)) return tooMany('Слишком много запросов к каталогу, подождите минуту');
+  const init = { method: request.method, headers: { 'x-api-key': env.CF_KEY, accept: 'application/json' } };
+  if (request.method === 'POST') {
+    init.body = await request.text();
+    init.headers['content-type'] = 'application/json';
+  }
+  const res = await fetch(CF_API + rest + url.search, init);
+  return new Response(res.body, {
+    status: res.status,
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': request.method === 'GET' ? 'public, max-age=300' : 'no-store',
+    },
+  });
+}
 
 // Чтение сводки: только с секретом STATS_KEY (npx wrangler secret put STATS_KEY); без секрета сводка закрыта.
 async function statsRead(env, request) {
@@ -436,8 +474,9 @@ const cleanRoomMods = (list) => (Array.isArray(list) ? list : []).slice(0, 40)
   .filter((m) => m && /^[a-z0-9_-]{1,64}$/.test(String(m.id || '')) && /^[0-9a-f]{40}$/.test(String(m.sha1 || '')))
   .map((m) => ({ id: String(m.id), name: String(m.name || m.id).slice(0, 60), sha1: String(m.sha1), size: Math.max(0, Math.min(2147483647, Math.floor(Number(m.size) || 0))) }));
 // комната на ретрансляторе VaultMC с ключом (лаунчер 6.4.14+): порт и ключ видят только друзья и те, у кого есть код
+// host — адрес ретранслятора, где открыта комната (лаунчер 7.0.35+); у старых комнат его нет, гость берёт запасной
 const cleanRelay = (r) => (r && Number.isInteger(r.port) && r.port > 0 && r.port < 65536 && /^[0-9a-f]{32}$/.test(String(r.token || ''))
-  ? { port: r.port, token: String(r.token) } : null);
+  ? { port: r.port, token: String(r.token), host: /^\d{1,3}(\.\d{1,3}){3}$/.test(String(r.host || '')) ? String(r.host) : null } : null);
 const cleanRoomInfo = (i) => ({
   instance: String((i && i.instance) || '').slice(0, 60), version: String((i && i.version) || '').slice(0, 30),
   loader: String((i && i.loader) || '').slice(0, 20), room: String((i && i.room) || '').slice(0, 120), p2p: !!(i && i.p2p),
