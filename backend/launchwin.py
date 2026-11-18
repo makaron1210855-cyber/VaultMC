@@ -55,7 +55,7 @@ class _PageApi:
         self._on_cancel = on_cancel
 
     def cancel(self) -> bool:
-        self._on_cancel()
+        self._on_cancel(True)     # кнопка: «Отмена» до запуска, «Закрыть игру» — когда игра уже идёт
         return True
 
 
@@ -68,7 +68,6 @@ class LaunchWindow:
         self._ready = False
         self._dirty = False
         self._opened = 0.0
-        self._by_us = False         # закрываем сами (игра запустилась) — это не отмена
         self._lines: list[str] = []
         self._snap = {"state": "preparing", "value": 0.0, "text": "", "title": "", "lang": "ru"}
 
@@ -93,7 +92,7 @@ class LaunchWindow:
             width=w, height=h, resizable=False, background_color="#0c0f16", **pos,
         )
         win.events.loaded += self._on_loaded
-        win.events.closing += self._on_closing
+        win.events.closing += lambda: self._on_closing(win)
         with self._lock:
             self._win = win
             self._opened = time.monotonic()
@@ -101,9 +100,7 @@ class LaunchWindow:
 
     def close(self) -> None:
         with self._lock:
-            win, self._win = self._win, None
-            if win is not None:
-                self._by_us = True
+            win, self._win = self._win, None   # окно уже не «текущее»: его closing — не отмена (см. _on_closing)
         if win is not None:
             try:
                 win.destroy()
@@ -173,13 +170,14 @@ class LaunchWindow:
             self._ready = True
             self._dirty = True
 
-    def _on_closing(self):
+    def _on_closing(self, win):
+        # закрываем сами (close) — окно к этому моменту уже не текущее. Раньше это отмечал флаг, и если Windows
+        # не присылала closing на destroy, флаг оставался и следующий крестик игрока не отменял запуск
         with self._lock:
-            if self._by_us:
-                self._by_us = False
+            if self._win is not win:
                 return None
             self._win = None
-        self._on_cancel()   # крестик — тоже отмена запуска
+        self._on_cancel(False)   # крестик — отмена запуска (уже запущенную игру не закрывает)
         return None
 
     def _pump(self, win) -> None:

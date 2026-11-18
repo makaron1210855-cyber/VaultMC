@@ -407,10 +407,17 @@ def rollback(game_dir: Path, backup_id: str) -> str:
     target = mods_dir / Path(entry["old_file"]).name
     current = mods_dir / Path(entry["new_file"]).name
     # если пользователь успел включить/выключить мод — ищем новый файл в обоих видах
-    for cand in (current, mods_dir / current.name.removesuffix(".disabled"), mods_dir / (current.name.removesuffix(".disabled") + ".disabled")):
-        if cand.exists() and cand != target:
-            cand.unlink()
-            break
+    names = [current.name.removesuffix(".disabled")]
+    # мод обновляли ещё раз после этой точки (A → B → C): сейчас в папке C, а не B — его тоже убираем,
+    # иначе после отката к A в папке оказывались A и C сразу (дубликат мода, игра не запускается)
+    now_file = (ModIndex(game_dir).data.get(f"{entry.get('source')}:{entry.get('project_id')}") or {}).get("file")
+    if now_file:
+        names.append(Path(str(now_file)).name.removesuffix(".disabled"))
+    for name in dict.fromkeys(names):
+        for cand in (mods_dir / name, mods_dir / (name + ".disabled")):
+            if cand.exists() and cand != target:
+                cand.unlink()
+                break
     src.replace(target)
     if entry.get("version"):     # от этой версии откатились — не предлагаем её снова (новее — предложим)
         _set_skipped(game_dir, f"{entry['source']}:{entry['project_id']}", str(entry["version"]))

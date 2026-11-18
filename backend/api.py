@@ -655,7 +655,10 @@ class Api:
         if action == "disable_mod" and inst and arg:
             path = inst.mods_dir / Path(str(arg)).name
             if path.is_file():
-                path.rename(path.with_name(path.name + ".disabled"))
+                try:   # файл занят или выключенная копия уже лежит рядом — понятный текст вместо ошибки окна
+                    path.rename(path.with_name(path.name + ".disabled"))
+                except OSError as exc:
+                    return {"error": f"Не удалось выключить {path.name}: {exc}"}
                 return {"ok": f"Мод {path.name} выключен"}
             return {"error": "Мод не найден — возможно, его уже убрали"}
         if action == "rollback_mod" and inst:
@@ -2618,12 +2621,21 @@ class Api:
         try:
             if self._launch_win is None:
                 from core.utils import resource_path
-                self._launch_win = LaunchWindow(resource_path("web/launch.html"), self.cancel)
+                self._launch_win = LaunchWindow(resource_path("web/launch.html"), self._launch_win_cancel)
             self._launch_win.open(inst.name, (self._cfg.ui or {}).get("lang", "ru"), getattr(self._bus, "_window", None))
             return True
         except Exception as exc:  # noqa: BLE001 — без окна запуск всё равно идёт (есть карточка в лаунчере)
             _log(f"окно запуска: {exc}")
             return False
+
+    def _launch_win_cancel(self, button: bool) -> None:
+        """Окно «Подождите…»: до запуска игры кнопка и крестик — отмена. Когда игра уже идёт, кнопка называется
+        «Закрыть игру» и закрывает её, а крестик просто убирает окно (раньше кнопка игру не закрывала)."""
+        if self._runner.state == "running":
+            if button:
+                self.kill_game()
+            return
+        self.cancel()
 
     def _close_launch_window(self) -> None:
         if self._launch_win is not None:

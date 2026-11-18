@@ -126,7 +126,14 @@ class InstanceManager:
 
     def duplicate(self, inst: Instance) -> Instance:
         new_id = self._unique_id(inst.name + " копия")
-        shutil.copytree(inst.root, self.root / new_id, ignore=shutil.ignore_patterns("logs", "crash-reports"))
+        src_root = str(inst.root)
+
+        def skip(folder: str, names: list[str]) -> set[str]:
+            # копии миров, корзина и точки сборки остаются у оригинала: раньше они копировались целиком,
+            # и «Копия сборки» с десятком копий миров занимала гигабайты и делалась минутами
+            own = {"backups", "trash", "snapshots"} if os.path.normpath(folder) == os.path.normpath(src_root) else set()
+            return {n for n in names if n in ("logs", "crash-reports") or n in own}
+        shutil.copytree(inst.root, self.root / new_id, ignore=skip)
         copy = Instance(**{**asdict(inst), "id": new_id, "name": inst.name + " (копия)",
                            "created_at": time.time(), "last_played": 0.0, "play_seconds": 0})
         self.save(copy)

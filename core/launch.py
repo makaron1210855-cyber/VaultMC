@@ -400,6 +400,12 @@ class GameRunner:
     def cancel(self) -> None:
         self.cancel_event.set()
 
+    def _check_cancel(self) -> None:
+        """Раньше «Отмену» видела только загрузка файлов: нажатая во время проверки аккаунта, скинов или Java,
+        она не действовала, и игра всё равно запускалась."""
+        if self.cancel_event.is_set():
+            raise Cancelled()
+
     def kill(self) -> None:
         if self.process and self.process.poll() is None:
             self.killed = True
@@ -453,6 +459,7 @@ class GameRunner:
             t0 = time.monotonic()
             auth = AuthInfo.offline("Player") if self.config.demo_mode else prepare_auth()
             t_auth = time.monotonic()
+            self._check_cancel()          # «Отмена» во время проверки аккаунта и скинов
             if self.config.demo_mode:
                 self._simulate(builder.build(target, auth, server, allow_stub=True))
                 return
@@ -502,6 +509,7 @@ class GameRunner:
 
             # пока игра грузится (все ядра заняты модами), она идёт с пониженным приоритетом — ПК остаётся отзывчивым,
             # окна не «зависают». Когда меню появилось, возвращаем обычный (или повышенный, если включено в настройках)
+            self._check_cancel()          # «Отмена» во время подготовки Java и библиотек — игру не запускаем
             flags = no_window_flags()   # обычный приоритет: при пониженном игра плохо отзывается на окна при загрузке
             started = time.time()
             self.killed = False

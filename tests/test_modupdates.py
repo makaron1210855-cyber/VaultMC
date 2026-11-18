@@ -74,6 +74,17 @@ class ApplyAndRollbackTests(unittest.TestCase):
         self.assertFalse((self.mods / "testmod-2.0.jar").exists())
         self.assertEqual(mu.list_backups(self.game), [])
 
+    def test_rollback_to_first_after_two_updates_leaves_one_jar(self):
+        with self._fake_download(b"V2"):
+            mu.apply(self.game, [_update("testmod-1.0.jar", "testmod-2.0.jar")], log=lambda *_: None)
+        first = mu.list_backups(self.game)[0]["id"]
+        with self._fake_download(b"V3"):
+            mu.apply(self.game, [_update("testmod-2.0.jar", "testmod-3.0.jar", version="3.0.0")], log=lambda *_: None)
+
+        mu.rollback(self.game, first)
+
+        self.assertEqual(sorted(p.name for p in self.mods.glob("*.jar")), ["testmod-1.0.jar"])
+
     def test_rollback_unknown_id_raises(self):
         with self.assertRaises(ValueError):
             mu.rollback(self.game, "no-such-id")

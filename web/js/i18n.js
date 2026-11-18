@@ -1561,6 +1561,7 @@ const I18N_EN = {
 " на Modrinth (": " on Modrinth (",
 "). Найдите его в каталоге.": "). Find it in the catalog.",
 "Мод не найден — возможно, его уже убрали": "Mod not found — it may have been removed already",
+"Не удалось выключить ": "Couldn't disable ",
 "Картинка больше 12 МБ — выберите поменьше": "The picture is over 12 MB — pick a smaller one",
 "Сначала проверьте обновления": "Check for updates first",
 "Закройте игру — обновление начнётся после неё": "Close the game — the update will start after it",

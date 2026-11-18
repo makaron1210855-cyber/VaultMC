@@ -212,6 +212,8 @@ def download(url: str, dest: Path, sha1: str | None = None, size: int | None = N
             return True
         except Cancelled:
             tmp.unlink(missing_ok=True)
+            if pooled:                     # ответ дочитан не до конца — это соединение больше не годится
+                _drop_connection(current)
             raise
         except _NoRetry as exc:
             raise DownloadError(f"не удалось скачать {url}: {exc}") from None
