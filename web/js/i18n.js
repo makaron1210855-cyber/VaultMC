@@ -5,6 +5,14 @@
    Названия сборок, миров, логи игры и то, что ввёл пользователь, не трогаем.
    ============================================================================= */
 const I18N_EN = {
+"Аккаунт и моды": "Account & mods",
+"Проверка модов...": "Checking mods...",
+"Нужно исправить моды": "Mods need fixing",
+"Файлы игры и Java": "Game files & Java",
+"Запуск игры": "Starting the game",
+"Скачиваю игру": "Downloading the game",
+"Последняя строка из консоли": "Last line from the console",
+"Игра открыта, можно играть": "Game is open, you can play",
 "Ресурспаки и шейдеры": "Resource packs & shaders",
 "Ресурспак .zip": "Resource pack .zip",
 "Шейдер .zip": "Shader .zip",

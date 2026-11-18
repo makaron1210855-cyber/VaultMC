@@ -9,10 +9,11 @@ async function play(server, force = false) {
   const inst = S.selected;
   if (!inst) { toast('Сначала создайте сборку', 'warn'); return openNewInstance(); }
   const address = typeof server === 'string' ? server : '';
+  // запуск готовится в фоне: ответ «ок» сразу, проверка модов придёт событием modcheck
   const res = await safe(api.play(inst.id, address, force));
-  if (res && res.modcheck) return showModCheck(res, address);
   if (res && okOrToast(res)) toast(address ? `Запускаю «${inst.name}» и подключаюсь к ${address}` : `Запускаю «${inst.name}»...`);
 }
+onEvent('modcheck', (r) => showModCheck(r, r.address));
 
 /* Проверка модов до запуска: что точно уронит игру и кнопка исправить прямо здесь */
 function showModCheck(res, address) {
@@ -274,6 +275,7 @@ async function boot() {
   // страница перезагрузилась, пока мир открыт (например, смена языка) — снова принимаем прямые подключения друзей
   if (b.p2pHost) p2pHostStart(b.p2pHost);
   setGamingMode(b.state);
+  setTimeout(renderLaunch, 0);   // страница перезагрузилась во время запуска — карточка сразу на месте
   S.friends = (await safe(api.friends())) || [];
   friendsPollStart();   // заявки в друзья и «друг открыл мир» всплывают окошками на любой вкладке
   openPackFile();       // сборку открыли двойным щелчком (.mrpack) — импортируем её

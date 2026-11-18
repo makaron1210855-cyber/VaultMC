@@ -204,6 +204,8 @@ class Api:
         self._lan_port = 0
         # Комната (адрес e4mc, прямое подключение, код) — только если игрок сам нажал «Открыть мир для друзей».
         # Обычное «Открыть для сети» (Radmin, одна Wi-Fi) лаунчер не трогает.
+        self._play_pending = False        # запуск готовится в фоне (проверка модов)
+        self._play_stop = threading.Event()
         self._room_pending = ("", 0.0)    # (сборка, когда нажали) — её сейчас запустят как комнату
         self._room_mode = False
         self._room_code = ""
@@ -2581,6 +2583,33 @@ class Api:
         inst = self._instances.get(instance_id)
         if inst is None:
             return {"error": "Создайте или выберите сборку"}
+        if self._runner.busy or self._play_pending:
+            return {"error": "Уже идёт другая операция"}
+        # проверка модов, конфликты, DNS и подготовка — в фоне: окно отвечает на нажатия во время запуска
+        self._play_pending = True
+        self._play_stop.clear()
+        self._on_runner_event("state", "preparing")
+        self._on_runner_event("progress", (0.01, "Проверка модов..."))
+        threading.Thread(target=self._play_job, args=(inst, acc, server, force), daemon=True).start()
+        return {"ok": True}
+
+    def _play_job(self, inst, acc, server: str, force: bool) -> None:
+        try:
+            self._play_run(inst, acc, server, force)
+        except Exception as exc:  # noqa: BLE001
+            _log(f"play: {exc}")
+            self._on_runner_event("log", f"[Ошибка] {exc}")
+            self._on_runner_event("error", str(exc))
+            self._play_stopped("Ошибка запуска")
+        finally:
+            self._play_pending = False
+
+    def _play_stopped(self, text: str = "Готово к запуску") -> None:
+        """Запуск остановлен до игры (проверка модов, отмена, ошибка): лаунчер снова на «Играть»."""
+        self._on_runner_event("state", "idle")
+        self._on_runner_event("progress", (0.0, text))
+
+    def _play_run(self, inst, acc, server: str, force: bool) -> None:
         ram = inst.ram_gb or self._auto_ram(inst)
         total = total_ram_gb() or 0
         if total and ram > max(2, total - 3):   # больше, чем есть ОЗУ: система уходит в подкачку и всё зависает
@@ -2591,8 +2620,6 @@ class Api:
         target = LaunchTarget(inst.version_id, inst.game_dir, ram, inst.jvm_args, inst.name, compat=inst.compat)
         if inst.compat:
             self._on_runner_event("log", "[Совместимость] Режим совместимости: игра запускается без оптимизаций лаунчера")
-        if self._runner.busy:
-            return {"error": "Уже идёт другая операция"}
         log = lambda m: self._on_runner_event("log", m)  # noqa: E731
         t_play = time.monotonic()
         try:   # известные конфликты — выключаем лишний мод сами, до проверки
@@ -2610,7 +2637,10 @@ class Api:
                 log(f"[Проверка модов] {exc}")
                 issues = []
             if issues:
-                return {"modcheck": issues, "instance": inst.id}
+                self._emit("modcheck", {"modcheck": issues, "instance": inst.id, "address": server})
+                return self._play_stopped("Нужно исправить моды")
+        if self._play_stop.is_set():
+            return self._play_stopped("Запуск отменён")
         t_checks = time.monotonic()
         # комната — только если игрок нажал «Открыть мир для друзей»; иначе e4mc не выдаёт адрес при «Открыть для сети»
         # «Открыть мир для друзей» нажали недавно — этот запуск комната. Через 10 минут уже нет: иначе обычное
@@ -2633,6 +2663,7 @@ class Api:
         self._running_account = acc.id    # время игры — тому, кто запустил, даже если аккаунт сменили во время игры
         self._cfg.selected_instance = inst.id
         self._save()
+
         def prepare():
             if self._cfg.skins_in_game:
                 try:
@@ -2657,12 +2688,17 @@ class Api:
                 server, self._dns_bridge = dnsrescue.rescue(server, log)
             except Exception as exc:  # noqa: BLE001  не вышло — запускаем как есть, игра сама скажет
                 log(f"[DNS] {exc}")
+        if self._play_stop.is_set():
+            if self._dns_bridge:
+                self._dns_bridge.close()
+                self._dns_bridge = None
+            return self._play_stopped("Запуск отменён")
         if not self._runner.launch(target, prepare, server):
             if self._dns_bridge:
                 self._dns_bridge.close()
                 self._dns_bridge = None
-            return {"error": "Уже идёт другая операция"}
-        return {"ok": True}
+            self._on_runner_event("error", "Уже идёт другая операция")
+            return self._play_stopped()
 
     def _auto_ram(self, inst) -> int:
         """Память для сборки без своей настройки: общая из настроек, но для больших модпаков — больше.
@@ -2683,6 +2719,7 @@ class Api:
         return {"ok": ok} if ok else {"error": "Уже идёт другая операция"}
 
     def cancel(self):
+        self._play_stop.set()
         self._runner.cancel()
 
     def kill_game(self):
