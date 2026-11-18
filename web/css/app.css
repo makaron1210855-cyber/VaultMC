@@ -85,7 +85,8 @@ body::after {   /* тонкая светящаяся линия под верх�
 .tb-mark { width: 34px; height: 34px; filter: drop-shadow(0 4px 10px rgba(var(--accent-rgb), .35)); }
 .wordmark { font-weight: 900; font-size: 18px; letter-spacing: -.2px; }
 .wordmark span { color: var(--accent-2); }
-.tb-brand em { font-style: normal; font-size: 10.5px; font-weight: 700; color: var(--faint); padding: 2px 7px; border-radius: 99px; background: var(--panel2); }
+/* версия лаунчера: видна всегда, в любом размере окна */
+.tb-brand em { flex: none; white-space: nowrap; font-style: normal; font-size: 10.5px; font-weight: 700; color: var(--faint); padding: 2px 7px; border-radius: 99px; background: var(--panel2); }
 
 .tabs { position: relative; display: flex; align-items: center; gap: 2px; padding: 5px; margin: 0 auto;
   border-radius: 16px; background: rgba(var(--ov), .035); border: 1px solid var(--line); }
@@ -151,7 +152,7 @@ body::after {   /* тонкая светящаяся линия под верх�
 .account-chip i { width: 14px; height: 14px; color: var(--muted); }
 /* узкое окно: сначала прячем подписи, потом — названия вкладок (остаются значки с подсказками) */
 .tb-online b { font-weight: 800; }
-@media (max-width: 1440px) { .tb-online .txt { display: none; } .account-chip .who small, .tb-brand em { display: none; } }
+@media (max-width: 1440px) { .tb-online .txt { display: none; } .account-chip .who small { display: none; } }
 @media (max-width: 1340px) { .tabs button { padding: 0 11px; gap: 7px; } .tb-tools button { width: 32px; } }
 /* узкое окно: надписи вкладок остаются, вместо них ужимаем всё вокруг (имя аккаунта, логотип-надпись, кнопку обновления) */
 @media (max-width: 1259px) { .tabs button { padding: 0 10px; gap: 6px; font-size: 12.5px; } .wordmark, .tb-reload { display: none; }
@@ -407,7 +408,6 @@ input[type=range]::-webkit-slider-thumb {
 .shelf-card.add i { width: 22px; height: 22px; }
 
 @media (max-width: 1050px) { .quick { grid-template-columns: repeat(2, 1fr); } }
-@media (max-height: 720px) { .shelf { display: none; } }
 
 /* ---------------------------------------------------------------- нижняя «пристань» запуска (все страницы, кроме главной) */
 .playbar {
