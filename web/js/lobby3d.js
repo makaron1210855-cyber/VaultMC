@@ -78,13 +78,15 @@ function lhWood(w, h, d, seed, latch, K = LH_WOOD_K) {
       g.fillStyle = col; g.fillRect(fx * K + sx, fy * K + sy, 1, 1);
     }
   }
-  if (latch) {   // железный замок как в игре: узкая застёжка (2 точки), начинается на крышке и свисает на основание
+  if (latch) {   // железный замок как в игре: маленькая серая застёжка (2×4), 3 ряда на крышке и 1 на основании
     const [fx, fy, fw, fh] = faces.front, cx = (fx + Math.floor(fw / 2)) * K;
     const onLid = latch === true;
-    const y0 = onLid ? fy * K + K : fy * K, y1 = onLid ? (fy + fh) * K : fy * K + 2 * K;
-    g.fillStyle = '#3b3e45'; g.fillRect(cx - K, y0, 2 * K, y1 - y0);                      // тёмный контур
-    g.fillStyle = '#c9ced6'; g.fillRect(cx - K + 2, y0 + 2, 2 * K - 4, y1 - y0 - 2);        // светлая пластина
-    if (!onLid) { g.fillStyle = '#3b3e45'; g.fillRect(cx - 2, y0 + 4, 4, 7); }             // замочная скважина
+    const y0 = onLid ? (fy + fh - 3) * K : fy * K, y1 = onLid ? (fy + fh) * K : fy * K + K;
+    g.fillStyle = '#26282d'; g.fillRect(cx - K, y0, 2 * K, y1 - y0);                       // тёмный контур
+    const grad = g.createLinearGradient(0, y0, 0, y1);
+    grad.addColorStop(0, '#b4bac4'); grad.addColorStop(1, '#8a909b');                      // приглушённый металл, не белый
+    g.fillStyle = grad; g.fillRect(cx - K + 3, onLid ? y0 + 3 : y0, 2 * K - 6, y1 - y0 - (onLid ? 3 : 3));
+    if (!onLid) { g.fillStyle = '#26282d'; g.fillRect(cx - 2, y0 + 1, 4, 4); }              // замочная скважина
   }
   return c;
 }
