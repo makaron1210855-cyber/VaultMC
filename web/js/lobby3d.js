@@ -51,17 +51,17 @@ async function lhLoadChestAtlas() {
   return c;
 }
 
-// развёртка досок для сундука: размеры [w, h, d] как у s3Box; latch — золотая застёжка спереди (на крышке)
+// развёртка досок для сундука: размеры [w, h, d] как у s3Box; part — 'base' (основание) или 'lid' (крышка)
 // K — во сколько раз развёртка крупнее «блоков» сундука: каждый блок делится на K×K точек текстуры, поэтому доски видны
 const LH_WOOD_K = 8;
-function lhWood(w, h, d, seed, latch, K = LH_WOOD_K) {
+function lhWood(w, h, d, seed, part, K = LH_WOOD_K) {
   const c = document.createElement('canvas'); c.width = K * (2 * d + 2 * w); c.height = K * (d + h);
   const g = c.getContext('2d');
   const wood = ['#9a6532', '#8a5a2b', '#a46f3a', '#86572a'];
   const atlas = lhChestAtlas || null;
   const px = atlas ? atlas.getContext('2d').getImageData(0, 0, 512, 512).data : null;
   const faces = s3Faces(w, h, d);
-  const uv = LH_UV[latch === true ? 'lid' : 'base'];
+  const uv = LH_UV[part];
   for (const [name, [fx, fy, fw, fh]] of Object.entries(faces)) {
     const sw = fw * K, sh = fh * K;
     const [ux, uy, uw, uh] = uv[name] || [0, 0, 1, 1];   // кусок развёртки этой грани, в пикселях 64×64
@@ -77,16 +77,6 @@ function lhWood(w, h, d, seed, latch, K = LH_WOOD_K) {
       if (edge) col = '#2b2b2f';
       g.fillStyle = col; g.fillRect(fx * K + sx, fy * K + sy, 1, 1);
     }
-  }
-  if (latch) {   // железный замок как в игре: маленькая серая застёжка (2×4), 3 ряда на крышке и 1 на основании
-    const [fx, fy, fw, fh] = faces.front, cx = (fx + Math.floor(fw / 2)) * K;
-    const onLid = latch === true;
-    const y0 = onLid ? (fy + fh - 3) * K : fy * K, y1 = onLid ? (fy + fh) * K : fy * K + K;
-    g.fillStyle = '#26282d'; g.fillRect(cx - K, y0, 2 * K, y1 - y0);                       // тёмный контур
-    const grad = g.createLinearGradient(0, y0, 0, y1);
-    grad.addColorStop(0, '#b4bac4'); grad.addColorStop(1, '#8a909b');                      // приглушённый металл, не белый
-    g.fillStyle = grad; g.fillRect(cx - K + 3, onLid ? y0 + 3 : y0, 2 * K - 6, y1 - y0 - (onLid ? 3 : 3));
-    if (!onLid) { g.fillStyle = '#26282d'; g.fillRect(cx - 2, y0 + 1, 4, 4); }              // замочная скважина
   }
   return c;
 }
@@ -168,19 +158,26 @@ async function drawSkinRig3d(container, skinUrl, accent) {
       st.parts[name] = piv;
     }
     // сундук-«хранилище» перед персонажем (лежит в группе персонажа, но каждый кадр компенсируем его прыжок и поворот)
-    const cw = 10, chh = 5, cd = 7, lidH = 2;
+    // модель сундука из minecraft-chest.zip: основание 14×10×14, крышка 14×5×14 (на 1 точку заходит на основание),
+    // замок 2×4×1 висит на крышке и свисает на основание. Уменьшаем до CS, чтобы сундук не закрывал персонажа
+    const CS = 0.7, Uc = U * CS;
+    const cw = 14, chh = 10, cd = 14, lidH = 5;
     const chest = lhEl('lh-chestg');
-    const base = lhEl('s3-pivot'); base.style.transform = `translate3d(0,${-(chh / 2) * U}px,0)`;
-    const bb = s3Box(lhWood(cw, chh, cd, 11, 'base'), 0, 0, [cw, chh, cd], U, [1, 1, 1], LH_WOOD_K); lhShade(bb); base.append(bb);
+    const base = lhEl('s3-pivot'); base.style.transform = `translate3d(0,${-(chh / 2) * Uc}px,0)`;
+    const bb = s3Box(lhWood(cw, chh, cd, 11, 'base'), 0, 0, [cw, chh, cd], Uc, [1, 1, 1], LH_WOOD_K); lhShade(bb); base.append(bb);
     const lidPivot = lhEl('s3-pivot');
-    const lidOff = lhEl('s3-off'); lidOff.style.transform = `translate3d(0,${-(lidH / 2) * U}px,${(cd / 2) * U}px)`;
-    const lb = s3Box(lhWood(cw, lidH, cd, 12, true), 0, 0, [cw, lidH, cd], U, [1, 1, 1], LH_WOOD_K); lhShade(lb); lidOff.append(lb); lidPivot.append(lidOff);
+    const lidOff = lhEl('s3-off'); lidOff.style.transform = `translate3d(0,${-(lidH / 2 - 1) * Uc}px,${(cd / 2) * Uc}px)`;
+    const lb = s3Box(lhWood(cw, lidH, cd, 12, 'lid'), 0, 0, [cw, lidH, cd], Uc, [1, 1, 1], LH_WOOD_K); lhShade(lb); lidOff.append(lb); lidPivot.append(lidOff);
+    let latchTex = lhChestAtlas;           // кусок текстуры 6×5 в левом верхнем углу — развёртка замка
+    if (!latchTex) { latchTex = document.createElement('canvas'); latchTex.width = 48; latchTex.height = 40; const lg = latchTex.getContext('2d'); lg.fillStyle = '#8a909b'; lg.fillRect(0, 0, 48, 40); }
+    const latchOff = lhEl('s3-off'); latchOff.style.transform = `translate3d(0,${0.95 * Uc}px,${(cd + 0.5) * Uc}px)`;
+    const latch = s3Box(latchTex, 0, 0, [2, 4, 1], Uc, [1, 1, 1], LH_WOOD_K); lhShade(latch); latchOff.append(latch); lidPivot.append(latchOff);
     const cglow = lhEl('lh-chestglow');
-    cglow.style.cssText = `width:${(cw - 1.5) * U}px;height:${(cd - 1.5) * U}px;margin:${-(cd - 1.5) / 2 * U}px 0 0 ${-(cw - 1.5) / 2 * U}px;`
-      + `transform:translate3d(0,${-chh * U + 1}px,0) rotateX(90deg);`;
+    cglow.style.cssText = `width:${(cw - 2) * Uc}px;height:${(cd - 2) * Uc}px;margin:${-(cd - 2) / 2 * Uc}px 0 0 ${-(cw - 2) / 2 * Uc}px;`
+      + `transform:translate3d(0,${-chh * Uc + 1}px,0) rotateX(90deg);`;
     chest.append(base, lidPivot, cglow);
     char.append(chest);
-    st.chest = chest; st.lid = lidPivot; st.chestGlow = cglow; st.chestH = chh; st.chestD = cd;
+    st.chest = chest; st.lid = lidPivot; st.chestGlow = cglow; st.chestH = chh * CS; st.chestD = cd * CS;
     world.append(char);
     scene.append(world);
     container.append(scene);
@@ -259,7 +256,7 @@ async function drawSkinRig3d(container, skinUrl, accent) {
       if (st.shadow) st.shadow.style.opacity = (1 - 0.45 * jump).toFixed(2);
 
       // сундук стоит на месте (компенсируем прыжок и поворот персонажа); крышка и свет
-      const cx = -6.5 * U, cy = 16 * U, cz = 6.5 * U;
+      const cx = -8 * U, cy = 16 * U, cz = 8 * U;
       st.chest.style.transform = `rotateY(${(-yaw).toFixed(2)}deg) translate3d(0,${(-dy).toFixed(2)}px,0) translate3d(${cx}px,${cy}px,${cz}px)`;
       const open = act ? lhSeg(T, 0.12, 0.3) * (1 + 0.08 * Math.sin(Math.PI * lhSeg(T, 0.12, 0.3))) - lhSeg(T, 0.95, 1.2) : 0;
       st.lid.style.transform = `translate3d(0,${-st.chestH * U}px,${-(st.chestD / 2) * U}px) rotateX(${(open * 108).toFixed(2)}deg)`;
