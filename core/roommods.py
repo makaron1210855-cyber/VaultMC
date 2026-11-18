@@ -16,6 +16,8 @@ from __future__ import annotations
 import io
 import json
 import re
+import time
+import urllib.request
 import zipfile
 from pathlib import Path
 
@@ -26,7 +28,30 @@ FABRIC_API_PROJECT = "P7dR8mSH"   # Fabric API на Modrinth
 MAX_MODS = 40          # столько записей принимает сервер комнат
 SKIP_IDS = {"e4mc", "e4mc_minecraft", "mcwifipnp", "fabric-api", "fabric", "fabricloader", "quilt_loader", "minecraft", "java"}
 # Моды, которые точно регистрируют записи, но эвристика по байткоду их не видит (проверено на CreativeCore и PatPat, 1.20.1)
-ALWAYS_IDS = {"creativecore", "patpat"}
+ALWAYS_IDS = {"creativecore", "patpat", "sounds", "fallingleaves"}
+# Список на сайте: его можно дополнять без выпуска лаунчера. Нет связи — берём встроенный ALWAYS_IDS.
+CATALOG_URL = "https://vaultmc.vaultmc.workers.dev/roomlist.json"
+CATALOG_TTL = 3600          # удачный ответ помним час
+CATALOG_RETRY = 600         # после сбоя пробуем снова через 10 минут
+_catalog: dict = {"at": 0.0, "ids": None, "ok": False}
+_ID_RE = re.compile(r"[a-z0-9_\-]{1,64}")
+
+
+def always_ids() -> set[str]:
+    """Моды, которые предлагаем гостю всегда: встроенный список + список с сайта."""
+    now = time.time()
+    if _catalog["ids"] is None or now - _catalog["at"] >= (CATALOG_TTL if _catalog["ok"] else CATALOG_RETRY):
+        _catalog["at"] = now
+        try:
+            with urllib.request.urlopen(CATALOG_URL, timeout=5) as resp:
+                data = json.loads(resp.read(65536).decode("utf-8", "replace"))
+            raw = data.get("always") if isinstance(data, dict) else None
+            items = [x.strip().lower() for x in (raw if isinstance(raw, list) else []) if isinstance(x, str)]
+            ids = {x for x in items if _ID_RE.fullmatch(x)}
+            _catalog["ids"], _catalog["ok"] = ids, True
+        except (OSError, ValueError, AttributeError):
+            _catalog["ids"], _catalog["ok"] = set(), False
+    return ALWAYS_IDS | _catalog["ids"]
 
 # Реестры, номера из которых игра шлёт по сети: SOUND_EVENT, FLUID, MOB_EFFECT, BLOCK, ENCHANTMENT, ENTITY_TYPE, ITEM,
 # PARTICLE_TYPE, BLOCK_ENTITY_TYPE, MENU, ATTRIBUTE.
@@ -120,6 +145,7 @@ def needed_mods(mods_dir: Path, loader: str, log=print) -> list[dict]:
     if hit and hit[0] == sig:
         return hit[1]
     out: list[dict] = []
+    always = always_ids()
     for jar in jars:
         try:
             info = read_mod(jar)
@@ -128,7 +154,7 @@ def needed_mods(mods_dir: Path, loader: str, log=print) -> list[dict]:
                 continue
             # environment=client не спасает: такой мод (sounds, fallingleaves) всё равно регистрирует
             # звуки/частицы, и гость без него получает «неизвестные записи реестра» при входе
-            if mod_id not in ALWAYS_IDS:
+            if mod_id not in always:
                 with zipfile.ZipFile(jar) as z:
                     if not _jar_registers(z):
                         continue

@@ -506,6 +506,46 @@ class Api:
         guest = self._relay_guest
         return {"mode": "relay", **guest.stats()} if guest else {}
 
+    def net_ping(self, address: str) -> dict:
+        """Задержка до адреса через e4mc: три замера TCP-соединения, берём лучший. ms = None — не отвечает."""
+        import socket
+        import time as _time
+        host, _, port = str(address or "").strip().rpartition(":")
+        if not host or not port.isdigit():
+            return {"ms": None}
+        best = None
+        for _ in range(3):
+            try:
+                start = _time.perf_counter()
+                with socket.create_connection((host, int(port)), timeout=3):
+                    pass
+                took = int((_time.perf_counter() - start) * 1000)
+                best = took if best is None else min(best, took)
+            except OSError:
+                continue
+        return {"ms": best}
+
+    def relay_ping(self) -> dict:
+        """Задержка до ретранслятора VaultMC (лучшая из трёх) — чтобы выбрать путь к другу. ms = None — не отвечает."""
+        from core.relay import ping_best
+        return {"ms": ping_best()}
+
+    def guest_server_set(self, host: str, address: str) -> dict:
+        """Положить мир друга в «Сетевую игру» с готовым адресом (переход на e4mc во время игры)."""
+        from core.worlds import list_servers, save_servers
+        address = str(address or "").strip()
+        inst = self._instances.get(self._cfg.selected_instance)
+        if not inst or not address or len(address) > 255 or any(c.isspace() for c in address):
+            return {"error": "Неверный адрес"}
+        try:
+            servers = [s for s in list_servers(inst.game_dir) if not s["name"].startswith(self.GUEST_SERVER_PREFIX)]
+            save_servers(inst.game_dir, [{"name": f"{self.GUEST_SERVER_PREFIX}{host}", "ip": address}] + servers)
+            self._guest_server = inst.id
+        except Exception as exc:  # noqa: BLE001
+            _log(f"guest server: {exc}")
+            return {"error": "Не удалось записать список серверов"}
+        return {"ok": True}
+
     def _guest_server_remove(self) -> None:
         from core.worlds import list_servers, save_servers
         inst = self._instances.get(self._guest_server) if self._guest_server else None

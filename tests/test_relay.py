@@ -225,6 +225,23 @@ class RelayTests(unittest.TestCase):
         s.close()
         self.assertEqual(answer, "PONG")
 
+    def test_ping_best_measures_relay(self):
+        ms = client.ping_best(tries=3)
+        self.assertIsNotNone(ms)
+        self.assertGreaterEqual(ms, 0)
+        self.assertLess(ms, 1000)
+
+    def test_ping_best_none_when_relay_down(self):
+        saved = client.CONTROL_PORT
+        probe = socket.socket()
+        probe.bind(("127.0.0.1", 0))
+        client.CONTROL_PORT = probe.getsockname()[1]   # порт занят, но никто не слушает — соединение отклонят
+        try:
+            self.assertIsNone(client.ping_best(tries=2, timeout=1))
+        finally:
+            probe.close()
+            client.CONTROL_PORT = saved
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -256,26 +256,37 @@ class RelayGuest:
 
     def _ping_loop(self) -> None:
         while self.alive:
-            s = None
-            try:
-                s = _connect(timeout=5)
-                t0 = time.perf_counter()
-                s.sendall(b"PING\n")
-                ok = _line(s) == "PONG"
-                ms = int((time.perf_counter() - t0) * 1000)
-                self.rtt = ms if ok else None
-            except OSError:
-                self.rtt = None
-            finally:
-                if s is not None:           # раньше при таймауте сокет оставался открытым каждые 10 с
-                    try:
-                        s.close()
-                    except OSError:
-                        pass
+            self.rtt = ping_once()
             for _ in range(10):
                 if not self.alive:
                     return
                 time.sleep(1)
+
+
+def ping_once(timeout: float = 5.0) -> int | None:
+    """Задержка до ретранслятора в мс (PING → PONG), None — не ответил. Время соединения не считается."""
+    s = None
+    try:
+        s = _connect(timeout=timeout)
+        t0 = time.perf_counter()
+        s.sendall(b"PING\n")
+        ok = _line(s) == "PONG"
+        ms = int((time.perf_counter() - t0) * 1000)
+        return ms if ok else None
+    except OSError:
+        return None
+    finally:
+        if s is not None:           # раньше при таймауте сокет оставался открытым каждые 10 с
+            try:
+                s.close()
+            except OSError:
+                pass
+
+
+def ping_best(tries: int = 3, timeout: float = 3.0) -> int | None:
+    """Лучший из нескольких замеров: один случайно медленный замер не должен решать, каким путём идти."""
+    got = [ms for ms in (ping_once(timeout) for _ in range(max(1, tries))) if ms is not None]
+    return min(got) if got else None
 
 
 def _bridge(remote: socket.socket, local: socket.socket, count=None) -> None:

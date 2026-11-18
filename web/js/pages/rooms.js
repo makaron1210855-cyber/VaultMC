@@ -554,11 +554,13 @@ async function joinFriend(name, st, code = '') {
   if (!await roomModsGate(name, st, code)) return;
   JOINED.name = name; JOINED.st = st;
   // Порядок: ретранслятор VaultMC (проще и надёжнее всего) → напрямую → e4mc. Каждый следующий — если не вышел предыдущий.
+  // Если у друга открыты и ретранслятор, и e4mc — сначала меряем оба и идём через более быстрый (при равенстве — ретранслятор).
+  if (st.relay && st.room && await e4mcIsFaster(st)) return viaE4mc(name, st.room, '', st);
   if (st.relay) {
     const r = await safe(api.relay_guest_start(name, st.relay.port, st.relay.token));
     if (r && r.address) {
       toast(`Захожу к ${name} через ретранслятор VaultMC`);
-      netWatch('relay');
+      watchPath(name, st, 'relay');
       S.config.server_address = r.address;
       return play(r.address);
     }
@@ -566,7 +568,7 @@ async function joinFriend(name, st, code = '') {
     if (r && r.error && (st.p2p || st.room)) toast(`Ретранслятор: ${r.error}. Пробую другой способ`, 'warn', 7000);
     else if (r && r.error) return toast(r.error, 'error', 9000);
   }
-  if (!st.p2p) return st.room ? viaE4mc(name, st.room) : undefined;
+  if (!st.p2p) return st.room ? viaE4mc(name, st.room, '', st) : undefined;
   const m = openModal(`<h3>Подключение к ${esc(name)}</h3>
     <div class="share-wait muted small" id="p2pStatus">${ic('refresh')} Готовлю прямое соединение...</div>
     <p class="note">Если у провайдера строгий NAT и напрямую не выйдет${st.room ? ', лаунчер сам зайдёт через e4mc' : ''}.</p>
@@ -578,22 +580,62 @@ async function joinFriend(name, st, code = '') {
     if (!m.isConnected) return;
     m.__done = true; m.close();
     toast(`Соединились с ${name} напрямую — запускаю игру`);
-    netWatch('p2p');
+    watchPath(name, st, 'p2p');
     S.config.server_address = address;
     await play(address);
   } catch (e) {
     if (!m.isConnected) return;
     m.__done = true; m.close(); p2pGuestStop();
     const why = String(e && e.message || e);
-    if (st.room) viaE4mc(name, st.room, why);
+    if (st.room) viaE4mc(name, st.room, why, st);
     else toast(why, 'error', 9000);
   }
 }
 
-function viaE4mc(name, address, why = '') {
+function viaE4mc(name, address, why = '', st = null) {
   toast(`${why ? why + '. ' : ''}Захожу к ${name} через e4mc`, why ? 'warn' : 'info', 9000);
-  netWatch('e4mc');
+  if (st) watchPath(name, st, 'e4mc', address);
+  else netWatch('e4mc', address);
   return joinAddress(address);
+}
+
+/* Замер перед входом: ретранслятор (PING до VPS) против e4mc (соединение до адреса e4mc). Оба — задержка до своего
+   сервера, так что сравнивать их честно. e4mc выбираем, только если оба ответили и e4mc заметно быстрее. */
+async function e4mcIsFaster(st) {
+  toast('Проверяю, через что быстрее подключиться…', 'info', 4000);
+  const [relay, e4mc] = await measurePaths([() => api.relay_ping(), () => api.net_ping(st.room)]);
+  if (relay === null || e4mc === null) return false;
+  const best = pickFastest([{ kind: 'relay', ms: relay }, { kind: 'e4mc', ms: e4mc }]);
+  if (best.kind !== 'e4mc') return false;
+  toast(`Через e4mc быстрее: ${e4mc} мс, через ретранслятор — ${relay} мс`, 'info', 7000);
+  return true;
+}
+
+/* Следить за задержкой текущего пути и сравнивать с другими путями к этому другу (net.js предложит переключиться) */
+function watchPath(name, st, mode, address = '') {
+  const alts = [];
+  if (st.relay && mode !== 'relay') alts.push({ kind: 'relay', probe: () => api.relay_ping(), switchTo: () => switchToRelay(name, st) });
+  if (st.room && mode !== 'e4mc') alts.push({ kind: 'e4mc', probe: () => api.net_ping(st.room), switchTo: () => switchToE4mc(name, st) });
+  netWatch(mode, address, alts);
+}
+
+/* Переключение во время игры: готовим новый путь и кладём мир друга в «Сетевую игру». Текущее соединение не рвём —
+   игрок сам выходит из мира и заходит снова, когда ему удобно. */
+async function switchToRelay(name, st) {
+  const r = await safe(api.relay_guest_start(name, st.relay.port, st.relay.token));
+  if (!r || !r.address) {
+    if (r && r.error) toast(r.error, 'error', 9000);
+    return;
+  }
+  watchPath(name, st, 'relay');
+  toast(`Готово. Выйдите из мира и зайдите снова: «Сетевая игра» → «VaultMC · ${name}» — теперь через ретранслятор`, 'info', 20000);
+}
+
+async function switchToE4mc(name, st) {
+  const r = await safe(api.guest_server_set(name, st.room));
+  if (!r || !okOrToast(r)) return;
+  watchPath(name, st, 'e4mc', st.room);
+  toast(`Готово. Выйдите из мира и зайдите снова: «Сетевая игра» → «VaultMC · ${name}» — теперь через e4mc`, 'info', 20000);
 }
 
 /* Последний друг, к которому заходили: если прямой канал оборвётся посреди игры, переключаемся на ретранслятор */
@@ -603,7 +645,7 @@ document.addEventListener('p2p-lost', async () => {
   if (!st || !st.relay || S.state !== 'running') return;
   const r = await safe(api.relay_guest_start(name, st.relay.port, st.relay.token));
   if (r && r.address) {
-    netWatch('relay');
+    watchPath(name, st, 'relay');
     toast(`Прямая связь с ${name} оборвалась. Зайдите снова: «Сетевая игра» → «VaultMC · ${name}» — теперь через ретранслятор`, 'warn', 15000);
   }
 });
