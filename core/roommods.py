@@ -25,6 +25,8 @@ from .modupdates import _sha1, _title
 FABRIC_API_PROJECT = "P7dR8mSH"   # Fabric API на Modrinth
 MAX_MODS = 40          # столько записей принимает сервер комнат
 SKIP_IDS = {"e4mc", "e4mc_minecraft", "mcwifipnp", "fabric-api", "fabric", "fabricloader", "quilt_loader", "minecraft", "java"}
+# Моды, которые точно регистрируют записи, но эвристика по байткоду их не видит (проверено на CreativeCore и PatPat, 1.20.1)
+ALWAYS_IDS = {"creativecore", "patpat"}
 
 # Реестры, номера из которых игра шлёт по сети: SOUND_EVENT, FLUID, MOB_EFFECT, BLOCK, ENCHANTMENT, ENTITY_TYPE, ITEM,
 # PARTICLE_TYPE, BLOCK_ENTITY_TYPE, MENU, ATTRIBUTE.
@@ -120,15 +122,16 @@ def needed_mods(mods_dir: Path, loader: str, log=print) -> list[dict]:
     out: list[dict] = []
     for jar in jars:
         try:
-            with zipfile.ZipFile(jar) as z:
-                # environment=client не спасает: такой мод (sounds, fallingleaves) всё равно регистрирует
-                # звуки/частицы, и гость без него получает «неизвестные записи реестра» при входе
-                if not _jar_registers(z):
-                    continue
             info = read_mod(jar)
             mod_id = (info.ids[0] if info.ids else "").strip().lower()
             if not mod_id or mod_id in SKIP_IDS or info.kind not in ("fabric", "quilt"):
                 continue
+            # environment=client не спасает: такой мод (sounds, fallingleaves) всё равно регистрирует
+            # звуки/частицы, и гость без него получает «неизвестные записи реестра» при входе
+            if mod_id not in ALWAYS_IDS:
+                with zipfile.ZipFile(jar) as z:
+                    if not _jar_registers(z):
+                        continue
             out.append({"id": mod_id[:64], "name": _title(jar, None)[:60], "sha1": _sha1(jar), "size": jar.stat().st_size})
         except Exception as exc:  # noqa: BLE001 — один битый мод не должен ломать открытие комнаты
             log(f"[Комната] {jar.name}: не прочитался ({exc})")

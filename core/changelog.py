@@ -1,6 +1,9 @@
 """Что нового в каждой версии — показывается после автообновления и попадает в version.json."""
 
 CHANGELOG = {
+    "7.0.31": [
+        "Вход к другу по коду: теперь предлагаются и CreativeCore и PatPat — без них гость получал «unknown registry entries» (creativecore, patpat)",
+    ],
     "7.0.30": [
         "Исправлен вход к другу по коду: лаунчер теперь предлагает поставить и клиентские моды хозяина со звуками и частицами (sounds, fallingleaves и похожие). Раньше без них гость вылетал с «Received … registry entries that are unknown to this client»",
     ],
