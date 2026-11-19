@@ -428,5 +428,21 @@ def rollback(game_dir: Path, backup_id: str) -> str:
     index.data[f"{entry['source']}:{entry['project_id']}"] = {"title": entry["title"], "file": target.name.removesuffix(".disabled"),
                                                               "dir": "mods"}
     index.path.write_text(json.dumps(index.data, indent=2, ensure_ascii=False), encoding="utf-8")
-    _write_manifest(game_dir, [e for e in entries if e.get("id") != backup_id])
+    # записи о более поздних обновлениях ЭТОГО ЖЕ мода (A → B → C, откатились к A) больше не имеют смысла: их «старая версия»
+    # B лежала бы в папке рядом с A, если нажать «Вернуть» ещё раз, — получился бы дубликат мода и игра не запустилась бы
+    def stale(e: dict) -> bool:
+        same = (e.get("source"), e.get("project_id")) == (entry.get("source"), entry.get("project_id"))
+        try:
+            return same and int(e.get("id")) > int(backup_id)
+        except (TypeError, ValueError):
+            return False
+    keep = []
+    for e in entries:
+        if e.get("id") == backup_id:
+            continue
+        if stale(e):
+            (_backup_dir(game_dir) / Path(e["backup"]).name).unlink(missing_ok=True)
+            continue
+        keep.append(e)
+    _write_manifest(game_dir, keep)
     return entry["title"]

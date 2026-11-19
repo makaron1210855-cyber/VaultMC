@@ -668,7 +668,16 @@ class Api:
             return []
 
     def crash_fix(self, instance_id: str, action: str, arg="") -> dict:
-        """Исправление из окна «Игра вылетела»."""
+        """Исправление из окна «Игра вылетела» и «Починки». После удачного — отметка времени: журналы старше неё
+        «Починка» больше не считает текущей проблемой (иначе после исправления находки возвращались)."""
+        res = self._crash_fix_run(instance_id, action, arg)
+        inst = self._instances.get(instance_id)
+        if inst and isinstance(res, dict) and res.get("ok"):
+            from core import repair
+            repair.mark_fixed(inst.game_dir)
+        return res
+
+    def _crash_fix_run(self, instance_id: str, action: str, arg="") -> dict:
         inst = self._instances.get(instance_id)
         if action == "java_auto":
             self._cfg.java_auto = True

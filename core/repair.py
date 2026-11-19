@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import time
 import zipfile
 from pathlib import Path
 
@@ -209,14 +210,44 @@ def _latest_log(game_dir: Path) -> str:
         return ""
 
 
+FIX_MARK = ".vaultmc_fixed_at"      # время последнего исправления: всё, что в журналах СТАРШЕ, уже «починено»
+LOG_CLEAN_RE = re.compile(r"Stopping!")
+LOG_CRASHED_RE = re.compile(r"#@!@# Game crashed|Crash report saved|Exception in thread|Incompatible mods found|"
+                            r"Mod resolution failed|Failed to start|Could not create the Java Virtual Machine")
+
+
+def mark_fixed(game_dir: Path) -> None:
+    try:
+        (game_dir / FIX_MARK).write_text(str(time.time()), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _fixed_at(game_dir: Path) -> float:
+    try:
+        return float((game_dir / FIX_MARK).read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return 0.0
+
+
+def _born(p: Path) -> float:
+    """Когда файл создан: latest.log пересоздаётся при каждом запуске игры, то есть это начало последнего запуска."""
+    st = p.stat()
+    return getattr(st, "st_birthtime", None) or st.st_ctime
+
+
 def _newest_report(game_dir: Path) -> str:
     folder = game_dir / "crash-reports"
     try:
         files = sorted(folder.glob("*.txt"), key=lambda p: p.stat().st_mtime)
         log = game_dir / "logs" / "latest.log"
-        # отчёт берём только свежий — свежее последнего запуска; старый вылет уже не про текущую картину
-        if files and (not log.exists() or files[-1].stat().st_mtime >= log.stat().st_mtime - 3600):
-            return files[-1].read_text(encoding="utf-8", errors="replace")[:200_000]
+        if not files:
+            return ""
+        newest = files[-1]
+        # отчёт нужен только от ПОСЛЕДНЕГО запуска: он записан после того, как создан latest.log. Раньше хватало «не старше часа
+        # до журнала» — и вылет, который уже давно починили удачным запуском, показывался как причина.
+        if (not log.exists() or newest.stat().st_mtime >= _born(log) - 5) and newest.stat().st_mtime > _fixed_at(game_dir):
+            return newest.read_text(encoding="utf-8", errors="replace")[:200_000]
     except OSError:
         pass
     return ""
@@ -231,10 +262,21 @@ SHADER_ERR_RE = re.compile(r"(?:iris|oculus|shaderpack|shader)[^\n]{0,120}(?:Fai
 def _log_issues(game_dir: Path, mods_dir: Path, ram_gb: int, known: set[str]) -> list[dict]:
     text = _latest_log(game_dir)
     report = _newest_report(game_dir)
+    log_file = game_dir / "logs" / "latest.log"
+    try:
+        # журнал старше последнего исправления (или изменения папки модов) описывает состояние ДО него: показывать из него
+        # проблемы значит предлагать чинить уже починенное — после «Починить» находки возвращались бы те же самые
+        if text and log_file.stat().st_mtime <= max(_fixed_at(game_dir), mods_dir.stat().st_mtime if mods_dir.is_dir() else 0.0):
+            text = ""
+    except OSError:
+        pass
     if not text and not report:
         return []
     out: list[dict] = []
-    for f in crash.analyze(text, report, mods_dir, ram_gb):
+    # игра закрылась как обычно (в журнале «Stopping!», ни вылета, ни ошибки запуска) — это не вылет: слова вроде
+    # «OutOfMemoryError» или «Mixin apply failed» в таком журнале — безобидные предупреждения, а не причина
+    clean = bool(LOG_CLEAN_RE.search(text)) and not report and not LOG_CRASHED_RE.search(text)
+    for f in ([] if clean else crash.analyze(text, report, mods_dir, ram_gb)):
         if f["title"].startswith("Причину не удалось"):
             continue
         key = "log:" + _norm(f["title"])

@@ -83,6 +83,7 @@ const I18N_EN = {
 "через": "after",
 "мин. Вот что удалось понять:": "min. Here is what we found:",
 "Причину не удалось определить": "Could not determine the cause",
+"Последняя ошибка:": "Last error:",
 "Посмотрите последние строки в консоли.": "Check the last lines in the console.",
 "Отчёт о вылете": "Crash report",
 "Консоль": "Console",

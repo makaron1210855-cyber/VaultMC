@@ -41,7 +41,7 @@ OUT = ROOT / "releases"
 MAJOR_TITLE = "⭐ VaultMC 1.0 — первый стабильный выпуск: светлая тема, масштаб, клавиатура, блокировка игроков, уведомления Windows, разбор подвисаний"
 
 # что НЕ кладём в установщик (папка app)
-APP_SKIP_TOP = {"build", "dist", "releases", "site", "packaging", "server", "tests", ".git", ".venv", "venv", ".claude",
+APP_SKIP_TOP = {"build", "dist", "releases", "site", "packaging", "server", "tests", "promo", ".git", ".venv", "venv", ".claude",
                 "CLAUDE.md", ".gitignore"}
 # мусор, который не попадает никуда
 EXCLUDE_DIRS = {".git", ".venv", "venv", "env", "__pycache__", "node_modules", "build", "dist", "releases", ".idea",

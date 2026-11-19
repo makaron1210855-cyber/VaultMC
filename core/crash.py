@@ -300,11 +300,27 @@ def analyze(log_text: str, report_text: str = "", mods_dir: Path | None = None, 
 
     # --- общее описание, если ничего не узнали
     if not found:
-        desc = re.search(r"^Description: (.+)$", report_text, re.M)
-        exc = re.search(r"^((?:[\w$]+\.)+[\w$]*(?:Exception|Error)[^\n]{0,160})", text, re.M)
-        detail = (desc.group(1) if desc else "") or (exc.group(1) if exc else "")
+        detail = root_cause(log_text, report_text)
         add("unknown", "Причину не удалось определить",
-            (f"Ошибка: {detail}. " if detail else "") +
+            (f"Последняя ошибка: {detail}. " if detail else "") +
             "Посмотрите последние строки в консоли. Если недавно ставили моды — выключите их по одному.",
             {"action": "logs", "arg": "", "label": "Открыть консоль"})
     return found
+
+
+EXC_LINE = re.compile(r"^(?:Caused by: )?((?:[\w$]+\.)+[\w$]*(?:Exception|Error)\b[^\n]{0,160})", re.M)
+
+
+def root_cause(log_text: str, report_text: str = "") -> str:
+    """Главная ошибка вылета: из отчёта — исключение сразу под «Description», иначе последнее «Caused by» (самое глубокое
+    в цепочке), иначе последнее исключение в конце журнала. Раньше брали ПЕРВОЕ исключение во всём журнале — это часто
+    безобидное предупреждение из начала загрузки, и окно называло причиной не то."""
+    desc = re.search(r"^Description: (.+)\n+((?:[\w$]+\.)+[\w$]*(?:Exception|Error)[^\n]{0,160})?", report_text, re.M)
+    if desc:
+        return (desc.group(1).strip() + (" — " + desc.group(2).strip() if desc.group(2) else ""))[:260]
+    for source in (report_text, "\n".join(log_text.splitlines()[-400:])):
+        caused = re.findall(r"^Caused by: ((?:[\w$]+\.)+[\w$]*(?:Exception|Error)\b[^\n]{0,160})", source, re.M)
+        if caused:
+            return caused[-1].strip()[:260]
+    tail = EXC_LINE.findall("\n".join(log_text.splitlines()[-400:]))
+    return tail[-1].strip()[:260] if tail else ""
