@@ -38,7 +38,7 @@ EXE = ROOT / "dist" / "VaultMC-Setup.exe"
 SITE = ROOT / "site"
 OUT = ROOT / "releases"
 
-MAJOR_TITLE = "⭐ VaultMC 1.0 — первый стабильный выпуск: светлая тема, масштаб, клавиатура, блокировка игроков, уведомления Windows, разбор подвисаний"
+MAJOR_TITLE = ""      # заголовок «большого» выпуска; пусто — в окне обновления только список изменений (раньше 1.0-заголовок висел в каждом выпуске)
 
 # что НЕ кладём в установщик (папка app)
 APP_SKIP_TOP = {"build", "dist", "releases", "site", "packaging", "server", "tests", "promo", ".git", ".venv", "venv", ".claude",
@@ -180,7 +180,7 @@ def build_site(version: str, exe: Path) -> Path:
     major = int(version.split(".")[0])
     changes = {v: lines for v, lines in CHANGELOG.items() if int(v.split(".")[0]) >= major - 2}
     info = {"version": version, "url": "VaultMC-Setup.exe", "sha256": hashlib.sha256(data).hexdigest(),
-            "notes": f"{MAJOR_TITLE}\n{notes_since(None, version)}", "changes": changes}
+            "notes": (f"{MAJOR_TITLE}\n" if MAJOR_TITLE else "") + notes_since(None, version), "changes": changes}
     from signing import sign_manifest                 # подпись ключом владельца (tools/signing.py)
     info = sign_manifest(info)
     (SITE / "version.json").write_text(json.dumps(info, ensure_ascii=False, indent=1), encoding="utf-8")
