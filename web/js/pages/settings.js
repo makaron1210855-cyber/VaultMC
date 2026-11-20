@@ -118,10 +118,8 @@ registerPage('settings', {
       <div class="card"><div class="card-title">${ic('search')} Диагностика</div>
         <p class="card-sub">Что-то не работает? Проверьте сеть или соберите отчёт — личное в нём вырезается, отправляете его вы сами.</p>
         <div class="row wrap"><button class="btn" data-a="netcheck">${ic('globe')} Проверить сеть</button>
-          <button class="btn" data-a="sreport">${ic('archive')} Отчёт для поддержки</button></div>
-        <div class="row wrap" style="margin-top:12px;align-items:center"><span class="small muted">Нужна помощь? Пишите:</span>
-          <button class="btn sm ghost" data-a="supportTg" title="Открыть Telegram">Telegram n0xam1</button>
-          <button class="btn sm ghost" data-a="supportDs" title="Скопировать ник Discord">Discord n0xam1</button></div></div>
+          <button class="btn" data-a="sreport">${ic('archive')} Отчёт для поддержки</button>
+          <button class="btn" data-a="supportTg" title="Откроется Telegram: n0xam1">${ic('link')} Написать в поддержку</button></div></div>
 
       ${S.account?.kind === 'offline' ? `<div class="card"><div class="card-title">${ic('key')} Пароль аккаунта ${esc(S.account.username)}</div>
         <div class="row"><input class="input" type="password" id="pw0" placeholder="Текущий пароль"><input class="input" type="password" id="pw1" placeholder="Новый пароль">
@@ -218,7 +216,6 @@ registerPage('settings', {
       if (a === 'netcheck') openNetCheck();
       if (a === 'sreport') openSupportReport();
       if (a === 'supportTg') api.open_url('https://t.me/n0xam1');
-      if (a === 'supportDs') { try { await navigator.clipboard.writeText('n0xam1'); toast('Ник Discord скопирован: n0xam1'); } catch (_) { toast('Discord: n0xam1'); } }
       if (a === 'rollback') {
         if (!await confirmDialog('Вернуть прошлую версию?', `Лаунчер закроется и откроется версия ${el.__prevVersion}. Сборки, миры и аккаунты не изменятся. Эту версию лаунчер больше не будет предлагать — следующее обновление придёт как обычно.`, 'Вернуть')) return;
         okOrToast(await safe(api.launcher_rollback()));

@@ -79,7 +79,7 @@ def _newest(folder: Path, pattern: str) -> Path | None:
     return files[-1] if files else None
 
 
-SUPPORT_CONTACTS = ("Поддержка VaultMC: Telegram n0xam1 (https://t.me/n0xam1), Discord n0xam1",)
+SUPPORT_CONTACTS = ("Поддержка VaultMC: Telegram n0xam1 (https://t.me/n0xam1)",)
 
 
 def summary(info: dict) -> str:

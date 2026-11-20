@@ -69,4 +69,4 @@ installer/vaultmc.nsi  скрипт установщика (NSIS)
 
 ## Поддержка
 
-Телеграм и Дискорд: **n0xam1**.
+Телеграм: [n0xam1](https://t.me/n0xam1).
