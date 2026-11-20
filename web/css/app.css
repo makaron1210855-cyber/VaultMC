@@ -644,8 +644,10 @@ input[type=range]::-webkit-slider-thumb {
 .tut-text p { margin: 0 0 12px; }
 .tut-text b { color: var(--text); }
 .tut-list { list-style: none; padding: 0; margin: 4px 0 0; display: grid; gap: 10px; }
-.tut-list li { display: flex; gap: 12px; align-items: flex-start; color: var(--text); }
-.tut-list li i { color: var(--accent); margin-top: 2px; }
+/* Текст строки — один блок (иконка выведена из потока): иначе каждый кусок текста становится отдельным flex-элементом с отступом */
+.tut-list li { position: relative; padding-left: 30px; color: var(--text); line-height: 1.55; }
+.tut-list li > i { position: absolute; left: 0; top: 2px; width: 18px; height: 18px; color: var(--accent); }
+.tut-list li > i svg { width: 18px; height: 18px; display: block; }
 .tut-steps { margin: 6px 0 12px; padding-left: 20px; line-height: 1.8; }
 .tut-ok { display: inline-flex; gap: 8px; align-items: center; padding: 10px 14px; border-radius: 10px; color: var(--accent-2); background: rgba(var(--accent-rgb), .12); font-weight: 700; }
 .tut-foot { display: flex; align-items: center; gap: 8px; margin-top: 18px; }
