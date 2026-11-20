@@ -1452,3 +1452,6 @@ body.gaming .launch-card { animation: none; }
 /* карточка облака лежит в обёртке #cloudCard — правило «.card + .card» её не видит */
 #cloudCard:not(:empty) { margin-top: 14px; }
 #cloudCard + .card { margin-top: 14px; }
+
+/* «Сборки → Готовые сборки» — заголовок вместо вкладок каталога */
+.cat-lock-title { font-size: 17px; font-weight: 800; }

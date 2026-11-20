@@ -58,7 +58,7 @@ registerPage('instances', {
     el.onclick = async (e) => {
       const a = e.target.closest('[data-a]')?.dataset.a;
       if (a === 'new') openNewInstance();
-      if (a === 'modpack') go('catalog', { type: 'modpack' });
+      if (a === 'modpack') go('packs');
       if (a === 'bycode') openImportByCode();
       if (a === 'import') {
         const r = await safe(api.import_instance());
@@ -132,6 +132,7 @@ async function renderTab(el, inst) {
         ${inst.loader !== 'vanilla' ? `<button class="btn" data-a="updates">${ic('refresh')} Обновления</button>
         <button class="btn" data-a="rollback" title="Вернуть мод к версии до обновления">${ic('refresh')} Откат</button>` : ''}
         <button class="btn" data-a="repair" title="Найти, что мешает запуску или даёт чёрный экран, и починить">${ic('shield')} Починка</button>
+        ${inst.loader !== 'vanilla' ? `<button class="btn" data-a="modcopy" title="Добавить моды, которые есть в другой вашей сборке">${ic('copy')} Из другой сборки</button>` : ''}
         <button class="btn primary" data-a="catalog">${ic('download')} Найти моды</button></div>
       <div class="list" id="modList"><div class="row muted"><span class="spinner"></span> Загрузка...</div></div>`;
     hydrateIcons(body);
@@ -157,6 +158,7 @@ async function renderTab(el, inst) {
       if (a === 'updates') openModUpdates(inst, e.target.closest('[data-a]'));
       if (a === 'repair') openRepair(inst, async () => { mods = await safe(api.instance_mods(inst.id)) || mods; draw(); });
       if (a === 'rollback') openModRollback(inst, async () => { mods = await safe(api.instance_mods(inst.id)) || mods; draw(); });
+      if (a === 'modcopy') openModCopy(inst, async () => { mods = await safe(api.instance_mods(inst.id)) || mods; if (body.isConnected) draw(); });
       const row = e.target.closest('.item[data-f]');
       if (row && e.target.closest('[data-d]')) {
         if (await confirmDialog('Удалить мод?', row.dataset.f, 'Удалить', true)) { mods = await safe(api.delete_mod(inst.id, row.dataset.f)) || mods; draw(); }
@@ -410,6 +412,10 @@ function openNewInstance() {
       : st.loader === 'forge' ? 'Forge — самый большой выбор модов для 1.12.2, 1.16.5 и 1.20.1. Установка дольше, чем у Fabric: лаунчер готовит игру под Forge.'
       : st.loader === 'neoforge' ? 'NeoForge — продолжение Forge для новых версий (1.20.1 и новее). Большинство модов для 1.21+ выходят на нём.'
       : (types.old_alpha || types.old_beta) && !st.oldest ? 'Старые версии (бета, альфа) — в конце списка. Включите «Сначала старые», чтобы увидеть их сразу.' : '';
+    if (res.listOk === false) {          // сервер загрузчика не ответил: видны только скачанные версии
+      $('#niHint', m).innerHTML = `<span style="color:var(--warn)">${ic('alert')} Список версий не загрузился — показаны только скачанные. Нажмите ${ic('refresh')} справа, чтобы загрузить заново.</span>`;
+      hydrateIcons($('#niHint', m));
+    }
     const list = $('#niList', m);
     list.innerHTML = res.items.length ? res.items.map((v) => `
       <div class="item ${st.selected?.id === v.id ? 'selected' : ''}" data-v="${esc(v.id)}" data-g="${esc(v.game)}" style="cursor:pointer;padding:8px 12px">
@@ -466,11 +472,17 @@ function openNewInstance() {
     $('#niBuildHint', m).textContent = builds.length > 1 ? 'Если сборка модов просит конкретную версию — выберите её.' : '';
     sel.onchange = () => { st.selected.id = sel.value; };
   };
-  $('#niRefresh', m).onclick = () => { api.refresh_versions(); toast('Обновляю список версий...'); };
+  $('#niRefresh', m).onclick = () => {
+    api.refresh_versions(); toast('Обновляю список версий...');
+    $('#niList', m).innerHTML = '<div class="row muted" style="padding:12px"><span class="spinner"></span> Загружаю список версий...</div>';
+  };
   $('#niCreate', m).onclick = async () => {
+    const btn = $('#niCreate', m);
+    if (btn.disabled || !st.selected) return;          // двойной щелчок создавал две одинаковые сборки
+    btn.disabled = true;
     const name = $('#niName', m).value.trim() || $('#niName', m).placeholder;
     const inst = await safe(api.create_instance(name, st.selected.id, st.selected.game, st.loader));
-    if (!inst) return;
+    if (!inst || inst.error) { btn.disabled = false; if (inst?.error) toast(inst.error, 'error'); return; }
     m.close(); await reloadInstances(); selectInstance(inst.id);
     toast(`Сборка «${inst.name}» создана — скачиваю игру`);
     if (S.page === 'instances' || S.page === 'lobby') refreshPage();

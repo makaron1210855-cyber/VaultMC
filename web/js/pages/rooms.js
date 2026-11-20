@@ -402,6 +402,7 @@ registerPage('friends', {
       if (h.dataset.h === 'invite') return copyText(tr(`Заходи ко мне в Minecraft через VaultMC: вкладка «Друзья» → «Зайти к другу» → код ${S.roomCode}`));
       if (h.dataset.h === 'roomnow') {
         h.disabled = true;
+        await vpnWarning();
         const r = await safe(api.open_room_now());
         if (!r || !okOrToast(r)) { h.disabled = false; return; }
         S.roomMode = true; hostRepaint(); return;
@@ -409,6 +410,7 @@ registerPage('friends', {
       if (h.dataset.h === 'new') return openNewInstance();
       if (h.dataset.h === 'start') {
         if (!S.account) return showAuth();
+        await vpnWarning();
         const id = $('#roomInst', el).value;
         const tun = ($('#roomTunnel', el) || {}).value || S.config.tunnel_mod || 'e4mc+lan';
         S.config.tunnel_mod = tun; S.roomInstance = id;
@@ -649,3 +651,24 @@ document.addEventListener('p2p-lost', async () => {
     toast(`Прямая связь с ${name} оборвалась. Зайдите снова: «Сетевая игра» → «VaultMC · ${name}» — теперь через ретранслятор`, 'warn', 15000);
   }
 });
+
+/* ---------------------------------------------------------------- VPN перед открытием мира */
+// Через VPN друзьям труднее подключиться и пинг выше. Окно ничего не запрещает: «Закрыть» — и мир открывается дальше.
+async function vpnWarning() {
+  const r = await api.vpn_check().catch(() => null);
+  if (!r || !r.vpn) return;
+  await new Promise((resolve) => {
+    const m = openModal(`<h3>${ic('alert')} Включён VPN</h3>
+      <p>Интернет сейчас идёт через VPN${r.name ? ` «<span class="no-tr">${esc(r.name)}</span>»` : ''}. Друзьям будет труднее подключиться к вашему миру, а пинг будет большим.</p>
+      <p class="small muted">Для игры с друзьями лучше выключить VPN. Radmin VPN, Hamachi и ZeroTier не мешают — о них лаунчер не предупреждает.</p>
+      <div class="foot"><button class="btn ghost" data-v="never">Закрыть и больше не показывать</button><button class="btn primary" data-v="close">Закрыть</button></div>`,
+    { onClose: resolve });
+    m.querySelectorAll('[data-v]').forEach((b) => (b.onclick = () => {
+      if (b.dataset.v === 'never') {
+        S.config.vpn_warn = false; safe(api.save_settings({ vpn_warn: false }));
+        toast('Предупреждение о VPN выключено. Включить снова — в «Настройках»');
+      }
+      m.close();
+    }));
+  });
+}

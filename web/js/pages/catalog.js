@@ -18,6 +18,7 @@ registerPage('catalog', {
       sort: ui.catSort || 'Популярные',
       query: params.query || '', page: 0, pages: 1, picked: new Map(), items: [],
       instance: params.instance || S.selected?.id || '',
+      lock: !!params.lock,             // «Сборки → Готовые сборки»: только сборки, без вкладок «Моды/Ресурсы/Шейдеры»
     };
     if (params.instance) selectInstance(params.instance);
     this.refresh(el);
@@ -27,8 +28,9 @@ registerPage('catalog', {
     const inst = S.instances.find((i) => i.id === st.instance);
     el.innerHTML = `
       <div class="cat-top">
+        ${st.lock ? `<button class="btn ghost sm" data-a="back">← Мои сборки</button><b class="cat-lock-title">Готовые сборки</b>` : ''}
         ${segHtml('source', [['modrinth', 'Modrinth'], ['curseforge', 'CurseForge']], st.source)}
-        ${segHtml('type', CAT_TYPES, st.type)}
+        ${st.lock ? '' : segHtml('type', CAT_TYPES, st.type)}
         <div class="grow"></div>
         <div class="cat-ver">${st.type === 'modpack'
           ? `<span class="small muted">Сборка станет новой сборкой лаунчера</span>`
@@ -37,7 +39,7 @@ registerPage('catalog', {
           ${st.type === 'modpack' || !inst ? '' : `<button class="btn sm" data-a="updates" title="Проверить и обновить моды этой сборки">${ic('refresh')} Обновления</button><button class="btn sm" data-a="rollback" title="Вернуть мод к версии до обновления">${ic('refresh')} Откат</button>`}
           ${st.type === 'modpack' ? '' : `<button class="btn sm primary" data-a="pick">Сменить</button>`}</div>
       </div>
-      <div class="search">${ic('search')}<input class="input" id="catSearch" placeholder="Поиск: sodium, journeymap, faithful..." value="${esc(st.query)}"></div>
+      <div class="search">${ic('search')}<input class="input" id="catSearch" placeholder="${st.type === 'modpack' ? 'Поиск сборки: Fabulously Optimized, RLCraft...' : 'Поиск: sodium, journeymap, faithful...'}" value="${esc(st.query)}"></div>
       <div class="spacer"></div>
       <div class="cat-body">
         <div class="card filters">
@@ -71,9 +73,16 @@ registerPage('catalog', {
       if (a === 'updates' && curInst) openModUpdates(curInst, e.target.closest('[data-a]'));
       if (a === 'rollback' && curInst) openModRollback(curInst, () => loadCatalog(el));
       if (a === 'cfkey') go('settings', { focus: 'cf' });
+      if (a === 'back') go('instances');
     };
     loadCatalog(el);
   },
+});
+
+// «Сборки → Готовые сборки»: тот же каталог, но только сборки и внутри вкладки «Сборки» (раньше кнопка уводила во вкладку «Моды»)
+registerPage('packs', {
+  render(el) { PAGES.catalog.render(el, { type: 'modpack', lock: true }); },
+  refresh(el) { PAGES.catalog.refresh(el); },
 });
 
 async function loadCatalog(el) {

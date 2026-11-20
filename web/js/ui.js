@@ -23,7 +23,7 @@ let currentPageEl = null;
 
 function registerPage(name, def) { PAGES[name] = def; }
 
-const PAGE_TITLES = { lobby: '', instances: 'Сборки', instance: 'Сборка', catalog: 'Моды', skins: 'Скины', rooms: 'Комнаты',
+const PAGE_TITLES = { lobby: '', instances: 'Сборки', instance: 'Сборка', packs: 'Готовые сборки', catalog: 'Моды', skins: 'Скины', rooms: 'Комнаты',
   friends: 'Друзья', settings: 'Настройки', logs: 'Консоль' };
 
 function go(name, params = {}) {
@@ -34,7 +34,7 @@ function go(name, params = {}) {
   if (!params.noSave && ['lobby', 'instances', 'catalog', 'skins', 'rooms', 'friends', 'settings', 'logs'].includes(name)) {
     api.save_ui('page', name).catch(() => {});
   }
-  $$('#nav button, .nav-bottom button').forEach((b) => b.classList.toggle('active', b.dataset.page === name || (name === 'instance' && b.dataset.page === 'instances')));
+  $$('#nav button, .nav-bottom button').forEach((b) => b.classList.toggle('active', b.dataset.page === name || ((name === 'instance' || name === 'packs') && b.dataset.page === 'instances')));
   moveTabInk();
   const tbPage = $('#tbPage');
   if (tbPage) tbPage.textContent = PAGE_TITLES[name] || '';

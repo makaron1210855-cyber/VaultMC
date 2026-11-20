@@ -101,6 +101,7 @@ registerPage('settings', {
         <label class="field"><span>Потоков загрузки: <b id="thrVal">${c.download_threads}</b></span><input type="range" min="4" max="64" value="${c.download_threads}" data-key="download_threads"></label>
         ${switchHtml('crash_stats', 'Анонимная статистика падений', 'Если игра вылетает, на сервер уходит только тип проблемы и версии лаунчера и игры — без ника, путей и названий модов', c.crash_stats)}
         ${switchHtml('win_notify', 'Уведомления Windows о друзьях', 'Когда лаунчер свёрнут: «Ник хочет в друзья» и «Ник открыл мир». Во время игры не показываются; свёрнутый лаунчер раз в 3 минуты спрашивает сервер', c.win_notify)}
+        ${switchHtml('vpn_warn', 'Предупреждать о VPN', 'Перед «Открыть мир для друзей»: если интернет идёт через VPN, друзьям труднее подключиться и пинг выше', c.vpn_warn)}
         ${switchHtml('discord_status', 'Статус «Играет в VaultMC» в Discord', 'Пока игра запущена, в Discord виден статус с названием сборки. Нужен открытый Discord на этом ПК', c.discord_status)}
         ${switchHtml('show_online','Показывать друзьям, что я в сети', 'Друзья VaultMC видят «в сети» / «играет в …» и могут зайти в вашу комнату', c.show_online)}
         ${switchHtml('auto_world_backups', 'Автокопии миров', 'После игры лаунчер копирует миры, в которых вы играли (5 последних копий на мир, миры больше 2 ГБ — только вручную)', c.auto_world_backups)}

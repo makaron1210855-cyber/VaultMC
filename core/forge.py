@@ -82,7 +82,14 @@ def neoforge_game_version(v: str) -> str:
 
 # ----------------------------------------------------------------------------- списки версий
 def fetch_meta(cache: Path) -> dict:
-    """{'forge': {mc: [версии, новые первыми]}, 'neoforge': {...}}. Без сети — из кэша."""
+    """{'forge': {mc: [версии, новые первыми]}, 'neoforge': {...}}. Без сети — из кэша.
+    Каждый загрузчик берётся из кэша отдельно: раньше, если Forge скачался, а NeoForge нет (сервер NeoForge
+    не ответил за 15 с), кэш перезаписывался пустым списком NeoForge и в «Новой сборке» оставались только скачанные версии."""
+    try:
+        cached = json.loads(cache.read_text(encoding="utf-8"))
+        cached = cached if isinstance(cached, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        cached = {}
     meta: dict = {"forge": {}, "neoforge": {}}
     try:
         promos = get_json(FORGE_PROMOS, timeout=15).get("promos", {})
@@ -96,25 +103,33 @@ def fetch_meta(cache: Path) -> dict:
     except Exception:  # noqa: BLE001
         pass
     try:
+        neo: dict = {}
         for v in reversed(get_json(NEO_VERSIONS, timeout=15).get("versions", [])):
-            meta["neoforge"].setdefault(neoforge_game_version(v), []).append(v)
-        legacy = [v.split("-", 1)[1] for v in get_json(NEO_LEGACY_VERSIONS, timeout=15).get("versions", [])
-                  if v.startswith("1.20.1-")]
-        if legacy:
-            meta["neoforge"]["1.20.1"] = list(reversed(legacy))
+            neo.setdefault(neoforge_game_version(v), []).append(v)
+        meta["neoforge"] = neo
     except Exception:  # noqa: BLE001
         pass
-    if meta["forge"] or meta["neoforge"]:
+    if meta["neoforge"]:                    # NeoForge для 1.20.1 — отдельный список; его сбой не должен ронять остальные
+        try:
+            legacy = [v.split("-", 1)[1] for v in get_json(NEO_LEGACY_VERSIONS, timeout=15).get("versions", [])
+                      if v.startswith("1.20.1-")]
+        except Exception:  # noqa: BLE001
+            legacy = []
+        if legacy:
+            meta["neoforge"]["1.20.1"] = list(reversed(legacy))
+        elif (cached.get("neoforge") or {}).get("1.20.1"):
+            meta["neoforge"]["1.20.1"] = cached["neoforge"]["1.20.1"]
+    fresh = [k for k in meta if meta[k]]
+    for key in meta:                        # что не скачалось — из кэша
+        if not meta[key] and isinstance(cached.get(key), dict):
+            meta[key] = cached[key]
+    if fresh:
         try:
             cache.parent.mkdir(parents=True, exist_ok=True)
             cache.write_text(json.dumps(meta), encoding="utf-8")
         except OSError:
             pass
-        return meta
-    try:
-        return json.loads(cache.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return meta
+    return meta
 
 
 def installer_url(loader: str, mc: str, version: str) -> str:

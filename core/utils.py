@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 APP_NAME = "VaultMC"
-APP_VERSION = "8.0.11"
+APP_VERSION = "8.0.12"
 
 
 def _build_id() -> str:

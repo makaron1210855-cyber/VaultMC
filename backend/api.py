@@ -619,6 +619,14 @@ class Api(ServerApiMixin):
                 from core import crashstats
                 crashstats.send_async(info["analysis"], APP_VERSION, inst.game_version if inst else "", inst.loader if inst else "")
 
+    def vpn_check(self) -> dict:
+        """Перед «Открыть мир для друзей»: включён ли VPN (через него друзья подключаются хуже, пинг выше).
+        {vpn: False}, если игрок выбрал «больше не показывать»."""
+        if not self._cfg.vpn_warn:
+            return {"vpn": False, "name": ""}
+        from core import vpncheck
+        return vpncheck.check()
+
     def crash_stats_choice(self, yes: bool) -> dict:
         """Ответ игрока на вопрос в окне вылета: присылать ли анонимную статистику падений."""
         self._cfg.crash_stats = bool(yes)
@@ -1804,7 +1812,10 @@ class Api(ServerApiMixin):
             entry = self._repo.remote_entry(i.game_version) if i.type in ("fabric", "forge", "neoforge") else None
             kind = entry.type if entry else i.type
             counts[kind] = counts.get(kind, 0) + 1
-        return {"total": len(items), "counts": counts, "items": [{
+        repo = self._repo
+        loaded = {"fabric": bool(repo.fabric_games), "forge": bool(repo.forge_meta.get("forge")),
+                  "neoforge": bool(repo.forge_meta.get("neoforge"))}.get(loader, bool(repo.remote))
+        return {"total": len(items), "counts": counts, "listOk": loaded and bool(repo.remote), "items": [{
             "id": i.id, "game": i.game_version, "type": i.type, "typeLabel": TYPE_LABELS.get(i.type, i.type),
             "date": i.release_time[:10], "installed": i.installed} for i in items[offset:offset + limit]]}
 
@@ -2181,6 +2192,35 @@ class Api(ServerApiMixin):
         titles = {v["file"]: v["title"] for v in index.values()}
         return [{"file": m.path.name, "name": titles.get(m.display_name, m.display_name), "enabled": m.enabled,
                  "size": m.size_kb} for m in ModManager(inst.game_dir).list_mods()]
+
+    # ---------------------------------------------------------------- моды из другой сборки
+    def _modcopy_pair(self, instance_id: str, source_id: str):
+        dst, src = self._inst(instance_id), self._inst(source_id)
+        if dst.id == src.id:
+            raise ValueError("Выберите другую сборку")
+        if not dst.supports_mods or not src.supports_mods:
+            raise ValueError("В сборке без загрузчика модов (Vanilla) модов нет")
+        return dst, src
+
+    def mod_copy_plan(self, instance_id: str, source_id: str) -> dict:
+        """Каких модов сборки source_id нет в instance_id и можно ли их поставить (core/modcopy.py)."""
+        from core import modcopy
+        dst, src = self._modcopy_pair(instance_id, source_id)
+        res = modcopy.plan(src.game_dir, src.loader, src.game_version, dst.game_dir, dst.loader, dst.game_version,
+                           lambda m: self._on_runner_event("log", m))
+        res["source"] = {"name": src.name, "loader": src.loader, "game": src.game_version}
+        return res
+
+    def mod_copy_install(self, instance_id: str, source_id: str, files: list) -> dict:
+        """Ставит выбранные моды из другой сборки. Перед этим — точка в «Истории»; мод, который сломал бы сборку, не ставится."""
+        from core import modcopy
+        if self._game_lock():
+            return {"error": "Закройте игру — моды можно добавить, пока она не запущена"}
+        dst, src = self._modcopy_pair(instance_id, source_id)
+        log = lambda m: self._on_runner_event("log", m)  # noqa: E731
+        items = modcopy.plan(src.game_dir, src.loader, src.game_version, dst.game_dir, dst.loader, dst.game_version, log)["items"]
+        self._auto_snapshot(dst, f"перед модами из «{src.name}»")
+        return modcopy.install(src.game_dir, dst.game_dir, dst.loader, dst.game_version, items, [str(f) for f in files], log)
 
     def toggle_mod(self, instance_id: str, filename: str) -> list:
         manager = ModManager(self._inst(instance_id).game_dir)
