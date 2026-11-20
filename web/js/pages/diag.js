@@ -123,6 +123,7 @@ async function openSupportReport(inst) {
       <div class="list">${r.files.map((f) => `<div class="item" style="padding:6px 12px"><div class="grow mono small">${esc(f.name)}</div><span class="small faint">${fmtSize(f.size)}</span></div>`).join('')}</div>
       <p class="small" style="margin-top:8px"><b>Вырезано:</b> ${removed} (имя Windows в путях, почта, IP-адреса, токены, ключи).
         Файлы аккаунтов и ключей в отчёт не входят никогда.</p>
+      <p class="small muted" style="margin-top:8px">Отправьте архив в поддержку: Telegram или Discord <b>n0xam1</b>.</p>
       <label class="switch" style="margin:6px 0"><input type="checkbox" id="srNick" ${hide ? 'checked' : ''}><span class="track"></span><span class="lbl">Скрыть мой ник</span></label>
       ${r.net ? '' : `<p class="small faint">Проверка сети в отчёт не вошла — нажмите «Проверить сеть», если проблема с загрузкой или друзьями.</p>`}
       <div class="foot"><button class="btn ghost" data-close>Отмена</button><button class="btn primary" id="srSave">${ic('download')} Сохранить отчёт...</button></div>`;

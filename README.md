@@ -66,3 +66,7 @@ installer/vaultmc.nsi  скрипт установщика (NSIS)
 Как добавить кнопку, которая что-то делает в Python:
 1. Напишите метод в `backend/api.py`, например `def hello(self, name): return f"Привет, {name}"`.
 2. Вызовите его в JS: `const text = await api.hello('Steve')`.
+
+## Поддержка
+
+Телеграм и Дискорд: **n0xam1**.

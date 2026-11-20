@@ -79,9 +79,12 @@ def _newest(folder: Path, pattern: str) -> Path | None:
     return files[-1] if files else None
 
 
+SUPPORT_CONTACTS = ("Поддержка VaultMC: Telegram n0xam1 (https://t.me/n0xam1), Discord n0xam1",)
+
+
 def summary(info: dict) -> str:
     """report.txt — сведения, собранные лаунчером (info) в читаемом виде."""
-    out = [f"Отчёт VaultMC {info.get('launcher', '?')} · {time.strftime('%Y-%m-%d %H:%M')}", ""]
+    out = [f"Отчёт VaultMC {info.get('launcher', '?')} · {time.strftime('%Y-%m-%d %H:%M')}", *SUPPORT_CONTACTS, ""]
     for title, rows in info.get("sections", []):
         out.append(f"== {title}")
         out += [f"  {r}" for r in rows]
@@ -107,7 +110,14 @@ def collect(game_dir: Path, launcher_home: Path, info: dict, console: list[str] 
         raw[hs.name] = _tail(hs, TAIL_SMALL)
     if net_text:
         raw["network-check.txt"] = net_text
-    files = {name: redact(text, names, stats) for name, text in raw.items() if text.strip()}
+    files = {name: redact(text, names, stats) for name, text in raw.items() if text.strip() and name != "report.txt"}
+    report = redact(raw["report.txt"], names, stats)
+    head = SUPPORT_CONTACTS[0]
+    for marker in (head, redact(head, names)):          # вернуть строку контактов, если очистка её изменила
+        if marker in report:
+            report = report.replace(marker, head, 1)
+            break
+    files = {"report.txt": report, **files}
     return files, stats
 
 
