@@ -124,15 +124,19 @@ test('комната: открыть, посмотреть, закрыть', asy
   assert.equal(open.status, 200);
   assert.match(open.data.code, /^[A-Z0-9]{6}$/);
 
-  const seen = await get(e, '/api/room/' + open.data.code);
+  const seen = await post(e, '/api/room', { ...as('Host_1', TOKEN_A), action: 'lookup', code: open.data.code });
   assert.equal(seen.status, 200);
   assert.equal(seen.data.host, 'Host_1');
   assert.equal(seen.data.info.instance, 'main');
 
   await post(e, '/api/room', { ...as('Host_1', TOKEN_A), action: 'close', code: open.data.code });
-  const gone = await get(e, '/api/room/' + open.data.code);
+  const gone = await post(e, '/api/room', { ...as('Host_1', TOKEN_A), action: 'lookup', code: open.data.code });
   assert.equal(gone.status, 404);
   assert.equal(gone.data.code, 'gone');
+  // старый GET /api/room/<код> удалён в 9.0.0 — больше не отдаёт комнату, даже открытую
+  const open2 = await post(e, '/api/room', { ...as('Host_1', TOKEN_A), action: 'open', info: {} });
+  const oldGet = await worker.fetch(new Request('https://x.test/api/room/' + open2.data.code, { headers: { 'CF-Connecting-IP': '1.1.1.1' } }), e);
+  assert.equal(oldGet.status, 404, 'GET /api/room удалён');
 });
 
 test('чужой игрок не может менять чужую комнату', async () => {
@@ -143,7 +147,7 @@ test('чужой игрок не может менять чужую комнат
   const r = await post(e, '/api/room', { ...as('Other_2', TOKEN_B), action: 'close', code: open.data.code });
   assert.equal(r.status, 200);
   assert.equal(r.data.gone, true);
-  assert.equal((await get(e, '/api/room/' + open.data.code)).status, 200, 'комната не должна закрыться');
+  assert.equal((await post(e, '/api/room', { ...as('Host_1', TOKEN_A), action: 'lookup', code: open.data.code })).status, 200, 'комната не должна закрыться');
 });
 
 test('список модов в комнате очищается: плохой sha1 отбрасывается', async () => {
@@ -157,7 +161,7 @@ test('список модов в комнате очищается: плохой
       { id: 'nohash', name: 'y', sha1: 'not-a-hash', size: 1 },
     ] },
   });
-  const seen = await get(e, '/api/room/' + open.data.code);
+  const seen = await post(e, '/api/room', { ...as('Host_1', TOKEN_A), action: 'lookup', code: open.data.code });
   assert.deepEqual(seen.data.info.mods.map((m) => m.id), ['sodium']);
 });
 
@@ -166,16 +170,16 @@ test('данные ретранслятора проходят в комнату
   await reg(e, 'Host_1', TOKEN_A);
   const relay = { port: 25601, token: 'f'.repeat(32), host: '37.139.51.156' };
   const open = await post(e, '/api/room', { ...as('Host_1', TOKEN_A), action: 'open', info: { relay } });
-  assert.deepEqual((await get(e, '/api/room/' + open.data.code)).data.info.relay, relay);
+  assert.deepEqual((await post(e, '/api/room', { ...as('Host_1', TOKEN_A), action: 'lookup', code: open.data.code })).data.info.relay, relay);
   // старые лаунчеры без адреса ретранслятора: host = null, гость возьмёт запасной
   const oldRelay = { port: 25602, token: 'e'.repeat(32) };
   const old = await post(e, '/api/room', { ...as('Host_1', TOKEN_A), action: 'open', info: { relay: oldRelay } });
-  assert.deepEqual((await get(e, '/api/room/' + old.data.code)).data.info.relay, { ...oldRelay, host: null });
+  assert.deepEqual((await post(e, '/api/room', { ...as('Host_1', TOKEN_A), action: 'lookup', code: old.data.code })).data.info.relay, { ...oldRelay, host: null });
   // кривой адрес ретранслятора отбрасывается (host = null), сама комната остаётся
   const badHost = await post(e, '/api/room', { ...as('Host_1', TOKEN_A), action: 'open', info: { relay: { ...oldRelay, host: 'evil; rm' } } });
-  assert.equal((await get(e, '/api/room/' + badHost.data.code)).data.info.relay.host, null);
+  assert.equal((await post(e, '/api/room', { ...as('Host_1', TOKEN_A), action: 'lookup', code: badHost.data.code })).data.info.relay.host, null);
   const bad = await post(e, '/api/room', { ...as('Host_1', TOKEN_A), action: 'open', info: { relay: { port: '1; rm', token: 'zz' } } });
-  assert.equal((await get(e, '/api/room/' + bad.data.code)).data.info.relay, null);
+  assert.equal((await post(e, '/api/room', { ...as('Host_1', TOKEN_A), action: 'lookup', code: bad.data.code })).data.info.relay, null);
 
   await reg(e, 'Friend_2', TOKEN_B);
   await post(e, '/api/friends', { ...as('Friend_2', TOKEN_B), action: 'request', other: 'Host_1' });
@@ -223,7 +227,7 @@ test('заявка, принятие и статус друга в списке'
   assert.equal(list.data.status.Bob_2.state, 'playing');
 });
 
-test('друзья старого сервера переносятся из KV, изменения копируются обратно', async () => {
+test('друзья старого сервера переносятся из KV, а копия в KV больше не пишется (с 9.0.0)', async () => {
   const e = env();
   await reg(e, 'Alice', TOKEN_A);
   await reg(e, 'Bob_2', TOKEN_B);
@@ -235,8 +239,7 @@ test('друзья старого сервера переносятся из KV,
   assert.deepEqual(list.data.incoming, ['Carol']);
 
   await post(e, '/api/friends', { ...as('Alice', TOKEN_A), action: 'remove', other: 'Bob_2' });
-  assert.deepEqual(JSON.parse(e.SKINS.m.get('friends:alice')).friends, []);
-  assert.deepEqual(JSON.parse(e.SKINS.m.get('friends:bob_2')).friends, []);
+  assert.deepEqual(JSON.parse(e.SKINS.m.get('friends:alice')).friends, ['Bob_2'], 'старая копия не обновляется');
   // повторный перенос не возвращает удалённого друга
   const again = await post(e, '/api/friends', { ...as('Alice', TOKEN_A), action: 'list' });
   assert.deepEqual(again.data.friends, []);
@@ -591,4 +594,38 @@ test('статистика падений: не больше 20 отчётов �
   const ok = { kind: 'oom', app: '6.4.21', mc: '1.20.1', loader: 'fabric' };
   for (let i = 0; i < 20; i++) assert.equal((await post(e, '/api/stat', ok, '9.9.9.9')).status, 200);
   assert.equal((await post(e, '/api/stat', ok, '9.9.9.9')).status, 429);
+});
+
+test('порог версии: старый лаунчер получает update_required, новый и без заголовка проходят', async () => {
+  const e = env();
+  await reg(e, 'Host_1', TOKEN_A);
+  const call = async (ua, body) => {
+    const headers = { 'content-type': 'application/json', 'CF-Connecting-IP': '1.1.1.1' };
+    if (ua) headers['User-Agent'] = ua;
+    const res = await worker.fetch(new Request('https://x.test/api/room', { method: 'POST', headers, body: JSON.stringify(body) }), e);
+    return { status: res.status, data: await res.json() };
+  };
+  const open = { ...as('Host_1', TOKEN_A), action: 'open', info: {} };
+  const old = await call('VaultMC/8.0.18', open);
+  assert.equal(old.status, 426);
+  assert.equal(old.data.code, 'update_required');
+  assert.equal((await call('VaultMC/9.0.0', open)).status, 200);
+  assert.equal((await call('VaultMC/10.1.0', open)).status, 200);
+  assert.equal((await call('', open)).status, 200);
+});
+
+test('P2P: 40 одновременных приглашений одному хозяину: все приняты, хранятся 10 свежих без повторов', async () => {
+  const e = env();
+  await reg(e, 'Host_1', TOKEN_A);
+  const open = await post(e, '/api/room', { ...as('Host_1', TOKEN_A), action: 'open', info: {} });
+  const guests = Array.from({ length: 40 }, (_, i) => ['Guest_' + i, tok(i + 100)]);
+  for (const [n, t] of guests) await reg(e, n, t, '11.0.0.' + Math.floor(Number(n.slice(6)) / 9));
+  const res = await Promise.all(guests.map(([n, t], i) => post(e, '/api/p2p', {
+    ...as(n, t), action: 'offer', host: 'Host_1', id: 'offer' + String(i).padStart(4, '0') + 'xx', sdp: 'x', code: open.data.code,
+  }, '11.0.1.' + i)));
+  assert.ok(res.every((r) => r.status === 200), JSON.stringify(res.filter((r) => r.status !== 200)[0]));
+  const inbox = await post(e, '/api/p2p', { ...as('Host_1', TOKEN_A), action: 'inbox' });
+  // у хозяина хранится не больше 10 приглашений (так задумано); гонки нет — id не повторяются и не ломаются
+  assert.equal(inbox.data.offers.length, 10);
+  assert.equal(new Set(inbox.data.offers.map((o) => o.id)).size, 10);
 });

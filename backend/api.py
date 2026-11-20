@@ -424,16 +424,10 @@ class Api(ServerApiMixin):
         if len(code) != 6:
             return {"error": "Код комнаты — 6 букв и цифр, например K7XQ2M"}
         acc = self._accounts.active
-        try:
-            if acc and acc.kind in ("offline", "elyby"):
-                try:    # от имени игрока: заблокировавший вас хозяин для вас «комнату закрыл»
-                    data = skinserver.lookup_room(acc.username, code)
-                except skinserver.SkinServerError as exc:
-                    if exc.status == 404 or exc.code == "gone":
-                        raise
-                    data = skinserver.get_room(code)    # старый сервер или сбой — как раньше, без имени
-            else:
-                data = skinserver.get_room(code)
+        if not acc or acc.kind not in ("offline", "elyby"):
+            return {"error": "Чтобы зайти по коду, войдите в аккаунт"}
+        try:    # от имени игрока: заблокировавший вас хозяин для вас «комнату закрыл»
+            data = skinserver.lookup_room(acc.username, code)
         except Exception as exc:  # noqa: BLE001
             return {"error": str(exc)}
         if acc and data.get("host", "").lower() == acc.username.lower():

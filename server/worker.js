@@ -16,7 +16,6 @@
  *   GET  /api/share/<код>                                    — сборка по коду
  *   POST /api/p2p        {name, token, action, host, id, sdp, code} — offer | inbox | answer | poll: прямое соединение (WebRTC)
  *   POST /api/room       {name, token, action, code, info}  — open | update | close: комната по коду (дружить не нужно)
- *   GET  /api/room/<код>                                     — к кому и в какую версию заходить по коду
  *   GET  /api/status                                         — проверка, что сервер работает (+ worlds: есть ли облако)
  *   POST /api/worlds, PUT /api/worlds/part, POST /api/worlds/file — облако миров (server/worlds.js, версия 7)
  *
@@ -52,6 +51,25 @@ const ROUTES = {
 };
 const SOCIAL_ROUTES = new Set(['friends', 'presence', 'p2p', 'room', 'worlds']);
 
+/* Порог версии лаунчера (9.0.0): старые лаунчеры уже не умеют то, на что рассчитан сервер (ретранслятор только с ключом,
+ * поиск комнаты от имени игрока). Вместо молчаливой поломки — понятный отказ с кодом update_required.
+ * Версию лаунчер сообщает в User-Agent «VaultMC/9.0.0»; запрос без такого заголовка (сайт, тесты) пропускаем. */
+const MIN_LAUNCHER = [9, 0, 0];
+const UPDATE_GATED = (route, body) => (route === 'room' && (body.action === 'open' || body.action === 'lookup'))
+  || (route === 'p2p' && body.action === 'offer');
+
+export function launcherTooOld(request, route, body) {
+  if (!UPDATE_GATED(route, body || {})) return null;
+  const m = /^VaultMC\/(\d+)\.(\d+)\.(\d+)/.exec(request.headers.get('User-Agent') || '');
+  if (!m) return null;
+  const v = [+m[1], +m[2], +m[3]];
+  for (let i = 0; i < 3; i++) {
+    if (v[i] > MIN_LAUNCHER[i]) return null;
+    if (v[i] < MIN_LAUNCHER[i]) return json({ error: 'Обновите лаунчер: эта версия больше не поддерживается сервером', code: 'update_required' }, 426);
+  }
+  return null;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -75,8 +93,6 @@ export default {
         if (path === '/api/catalog') return catalogList(env);
         const sh = path.match(/^\/api\/share\/([A-Z0-9]{6})$/);
         if (sh) return url.searchParams.has('brief') ? shareBrief(env, sh[1]) : getShare(env, sh[1]);
-        const rm = path.match(/^\/api\/room\/([A-Za-z0-9]{6})$/);
-        if (rm) return social(env, { op: 'getRoom', ip, code: rm[1].toUpperCase() });
         return new Response('Not found', { status: 404 });
       }
       if (request.method === 'PUT' && path === '/api/worlds/part') return worldPartRoute(env, request, ip, social);
@@ -89,6 +105,8 @@ export default {
       const route = ROUTES[path];
       if (!route) return json({ error: 'Неизвестный адрес' }, 404);
       if ((route === 'worlds' || route === 'worldsFile') && !env.WORLDS) return worldsDisabled();
+      const tooOld = launcherTooOld(request, route, body);
+      if (tooOld) return tooOld;
       const who = await auth(env, body);
       // Один запрос в Durable Object: он проверяет лимиты (в том числе блокировку после неверных паролей)
       // и сразу выполняет социальное действие. Для действий с KV он только разрешает или запрещает.
@@ -612,8 +630,18 @@ export class Social {
     if (!c || now - c.start >= windowMs) { c = { start: now, n: 0, win: windowMs }; this.counters.set(bucket, c); }
     return c;
   }
-  hit(bucket, [limit, windowMs]) { const c = this.counter(bucket, windowMs); c.n += 1; return c.n > limit; }
-  reached(bucket, [limit, windowMs]) { return this.counter(bucket, windowMs).n >= limit; }
+  // Суточные лимиты (окно от часа) лежат в SQLite (w_count): объект засыпает и забывает память, а с ней и счётчики —
+  // раньше после каждого перезапуска «10 ников в сутки» начинались заново. Частые короткие (240 запросов в минуту,
+  // поиск комнаты) остаются в памяти: запись в базу на каждый запрос съела бы суточный лимит записей Durable Object.
+  persistent(windowMs) { return windowMs >= 60 * MIN; }
+  hit(bucket, [limit, windowMs]) {
+    if (this.persistent(windowMs)) return this.wBump('lim:' + bucket, windowMs) > limit;
+    const c = this.counter(bucket, windowMs); c.n += 1; return c.n > limit;
+  }
+  reached(bucket, [limit, windowMs]) {
+    if (this.persistent(windowMs)) return this.wCount('lim:' + bucket) >= limit;
+    return this.counter(bucket, windowMs).n >= limit;
+  }
 
   // Раз в 10 минут убираем протухшие статусы, комнаты, приглашения и старые счётчики.
   cleanup() {
@@ -634,10 +662,6 @@ export class Social {
     if (m.op === 'gate') {
       return this.hit('register:' + ip, LIMITS.register)
         ? tooMany('С вашего адреса сегодня уже создано много ников. Попробуйте завтра') : json({ allow: true });
-    }
-    if (m.op === 'getRoom') {
-      if (this.hit('lookup:' + ip, LIMITS.roomLookup)) return tooMany('Слишком много попыток найти комнату. Подождите 10 минут');
-      return this.getRoom(String(m.code || ''));
     }
     if (m.op === 'stat') return this.stat(ip, m.body);
     if (m.op === 'statsList') return json({ rows: this.rows('SELECT day, kind, app, mc, loader, n FROM crashstats ORDER BY day DESC, n DESC LIMIT 500'), worlds: this.worldsStats() });
@@ -791,7 +815,6 @@ export class Social {
       return json({ error: 'Неизвестное действие' }, 400);
     }
     const mineNow = this.lists(me);
-    await this.backupFriends([[name, mineNow], [on, this.lists(ok)]]);
     return json({ ok: true, ...mineNow });
   }
 
@@ -814,20 +837,10 @@ export class Social {
     this.sql.exec('DELETE FROM rooms WHERE host_k = ?', fk);
     this.sql.exec('DELETE FROM offers WHERE host_k = ? OR from_k = ?', fk, fk);
     this.sql.exec('DELETE FROM answers WHERE host_k = ? OR guest_k = ?', fk, fk);
-    const mine = this.lists(tk);
-    await this.backupFriends([[to, mine]]);
     if (fk !== tk) {
       try { await this.env.SKINS.delete('friends:' + fk); } catch (err) { console.error('rename backup', err); }
     }
     return json({ ok: true });
-  }
-
-  // Временно, на время переезда: копия списков в KV (как у сервера версии 5), чтобы откат не терял друзей.
-  // Ошибка KV (лимит записей, «не чаще раза в секунду») не мешает — главный список уже в базе.
-  async backupFriends(pairs) {
-    await Promise.all(pairs.map(async ([n, data]) => {
-      try { await this.env.SKINS.put('friends:' + key(n), JSON.stringify(data)); } catch (err) { console.error('friends backup', n, err); }
-    }));
   }
 
   /* ---------------- статус «в сети» */
@@ -870,7 +883,6 @@ export class Social {
     const now = Date.now();
     if (action === 'lookup') {
       // Поиск комнаты от имени игрока (лаунчер 6.4.20+): заблокированный хозяином видит «комната не найдена».
-      // Старые лаунчеры ищут через GET /api/room/<код> без имени — там заблокированных не узнать (убрать после 1.0).
       if (this.hit('lookup:' + ip, LIMITS.roomLookup)) return tooMany('Слишком много попыток найти комнату. Подождите 10 минут');
       if (!CODE_RE.test(code)) return json({ error: 'Неверный код комнаты' }, 400);
       const r = this.rows('SELECT host, host_k, info FROM rooms WHERE code = ? AND exp > ?', code, now)[0];
@@ -899,12 +911,6 @@ export class Social {
     }
     if (action === 'close') { this.sql.exec('DELETE FROM rooms WHERE code = ?', code); return json({ ok: true }); }
     return json({ error: 'Неизвестное действие' }, 400);
-  }
-
-  getRoom(code) {
-    const r = CODE_RE.test(code) && this.rows('SELECT host, info FROM rooms WHERE code = ? AND exp > ?', code, Date.now())[0];
-    if (!r) return json({ error: 'Комната не найдена — она уже закрыта или код с ошибкой', code: 'gone' }, 404);
-    return json({ ok: true, host: r.host, info: JSON.parse(r.info) });
   }
 
   /* ---------------- прямое соединение (обмен приглашениями) */

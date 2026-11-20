@@ -79,7 +79,6 @@ class RelayHost:
         self.on_port = on_port          # вызывается с публичным портом (и после переподключения)
         self.host = host or RELAY_HOST  # ретранслятор, на котором открыта комната
         self.token = token or secrets.token_hex(16)
-        self.secure = True              # False — ретранслятор старой версии, комната без ключа
         self.public_port = 0
         self.alive = True
         self._ready = threading.Event()
@@ -110,22 +109,14 @@ class RelayHost:
                 time.sleep(3)
 
     def _open(self) -> tuple[socket.socket, int]:
-        if self.secure:
-            want = f" {self.public_port}" if self.public_port else ""
-            ctl, first = _ask(f"HOST2 {self.token}{want}", timeout=15, host=self.host)
-            if first.startswith("PORT "):
-                return ctl, int(first[5:])
-            ctl.close()
-            if first:                   # новый ретранслятор отказал (лимит, нет мест)
-                raise _refusal(first)
-            # ретранслятор старой версии закрывает соединение на незнакомую команду — открываем по-старому
-            self.secure = False
-            self.log("[Комната] ретранслятор старой версии — комната без ключа (как раньше)")
-        ctl, first = _ask("HOST", timeout=15, host=self.host)
-        if not first.startswith("PORT "):
-            ctl.close()
-            raise _refusal(first) if first else OSError("сервер не выдал порт комнаты")
-        return ctl, int(first[5:])
+        want = f" {self.public_port}" if self.public_port else ""
+        ctl, first = _ask(f"HOST2 {self.token}{want}", timeout=15, host=self.host)
+        if first.startswith("PORT "):
+            return ctl, int(first[5:])
+        ctl.close()
+        if first:                       # ретранслятор отказал (лимит, нет мест)
+            raise _refusal(first)
+        raise OSError("ретранслятор не ответил на HOST2 (старая версия сервера?)")
 
     def _session(self) -> None:
         ctl, port = self._open()
@@ -134,7 +125,7 @@ class RelayHost:
             self.log(f"[Комната] ретранслятор выдал новый порт {port} (был {self.public_port})")
         self.public_port = port
         self._ready.set()
-        self.log(f"[Комната] ретранслятор открыл порт {port}{'' if self.secure else ' (без ключа)'}")
+        self.log(f"[Комната] ретранслятор открыл порт {port}")
         self.on_port(port)
         ctl.settimeout(60)              # сервер шлёт PING каждые 20 с — молчание больше минуты значит обрыв
         f = ctl.makefile("rb")

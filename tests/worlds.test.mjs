@@ -727,3 +727,13 @@ test('сводка stats показывает облако', async () => {
   assert.equal(r.worlds.worlds, 1);
   assert.equal(r.worlds.bytes, 1100);
 });
+
+test('суточные лимиты (ники с адреса) переживают перезапуск объекта', async () => {
+  const e = env();
+  for (let i = 0; i < 10; i++) {
+    assert.equal((await reg(e, 'Lim_' + i, String(i).padStart(4, '0').repeat(10), {}, '7.7.7.7')).status, 200);
+    if (i === 4) e.restart();
+  }
+  e.restart();
+  assert.equal((await reg(e, 'Lim_10', '9'.repeat(40), {}, '7.7.7.7')).status, 429);
+});

@@ -127,7 +127,6 @@ class RelayTests(unittest.TestCase):
 
     def test_guest_with_key_reaches_world(self):
         h = self.host()
-        self.assertTrue(h.secure)
         g = self.guest(h.public_port, h.token)
         g.check()
         local = g.start()
@@ -159,13 +158,6 @@ class RelayTests(unittest.TestCase):
         self.assertEqual(s.recv(100), b"", "посторонний без ключа не должен попасть в мир")
         s.close()
 
-    def test_legacy_room_without_key_still_works(self):
-        h = client.RelayHost(ECHO_PORT, lambda m: None, lambda p: None)
-        h.secure = False                      # так открывает комнату лаунчер до 6.4.14
-        self.hosts.append(h)
-        h.start()
-        self.assertEqual(roundtrip(h.public_port), b"hello-vaultmc")
-
     def test_reconnect_keeps_port(self):
         h = self.host()
         port = h.public_port
@@ -179,26 +171,11 @@ class RelayTests(unittest.TestCase):
         g.check()
         self.assertEqual(roundtrip(g.start()), b"hello-vaultmc")
 
-    def test_old_relay_falls_back_to_room_without_key(self):
-        class Old(socketserver.BaseRequestHandler):   # ретранслятор до 6.4.14: HOST2 не знает и закрывает
-            def handle(self):
-                f = self.request.makefile("rb")
-                if f.readline().strip() == b"HOST":
-                    self.request.sendall(b"PORT 25777\n")
-                    time.sleep(2)
-        old = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Old)
-        old.daemon_threads = True
-        threading.Thread(target=old.serve_forever, daemon=True).start()
-        saved = client.CONTROL_PORT
-        client.CONTROL_PORT = old.server_address[1]
-        try:
-            h = client.RelayHost(ECHO_PORT, lambda m: None, lambda p: None)
-            self.hosts.append(h)
-            self.assertEqual(h.start(), 25777)
-            self.assertFalse(h.secure)
-        finally:
-            client.CONTROL_PORT = saved
-            old.shutdown()
+    def test_bare_host_command_is_refused(self):
+        # команда HOST без ключа удалена в 9.0.0: ретранслятор не выдаёт порт
+        s, answer = line("HOST")
+        self.assertFalse(answer.startswith("PORT "))
+        s.close()
 
     def test_rooms_per_address_limited(self):
         socks = []
