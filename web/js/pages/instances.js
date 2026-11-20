@@ -131,7 +131,7 @@ async function renderTab(el, inst) {
         <button class="btn" data-a="add">${ic('plus')} Файл .jar</button>
         ${inst.loader !== 'vanilla' ? `<button class="btn" data-a="updates">${ic('refresh')} Обновления</button>
         <button class="btn" data-a="rollback" title="Вернуть мод к версии до обновления">${ic('refresh')} Откат</button>` : ''}
-        <button class="btn" data-a="repair" title="Найти, что мешает запуску или даёт чёрный экран, и починить">${ic('shield')} Починка</button>
+        <button class="btn" data-a="repair" title="Только если Minecraft не запускается или даёт чёрный экран. Если игра работает — не нужно">${ic('shield')} Починка</button>
         ${inst.loader !== 'vanilla' ? `<button class="btn" data-a="modcopy" title="Добавить моды, которые есть в другой вашей сборке">${ic('copy')} Из другой сборки</button>` : ''}
         <button class="btn primary" data-a="catalog">${ic('download')} Найти моды</button></div>
       <div class="list" id="modList"><div class="row muted"><span class="spinner"></span> Загрузка...</div></div>`;
@@ -718,6 +718,7 @@ async function openModRollback(inst, onDone) {
 /* ---------------------------------------------------------------- починка сборки */
 async function openRepair(inst, onDone) {
   const m = openModal(`<h3>Починка сборки «${esc(inst.name)}»</h3>
+    <p class="small" style="margin:0 0 10px;color:var(--warn)">${ic('alert')} Нужна, только если Minecraft не запускается или вылетает. Если игра работает — ничего здесь не трогайте.</p>
     <div class="muted small" id="rpBody"><span class="spinner"></span> Проверяю моды, шейдеры, ресурспаки и журнал последнего запуска...</div>`, { wide: true });
   const body = $('#rpBody', m);
   const LV = { error: ['alert', 'Ошибка'], warn: ['alert', 'Подозрительно'], info: ['file', 'К сведению'] };

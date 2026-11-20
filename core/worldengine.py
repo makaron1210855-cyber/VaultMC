@@ -819,6 +819,14 @@ class CloudEngine:
     def disable_world(self, inst, folder: str) -> None:
         b = self.state.find_folder(inst.id, folder)
         if b:
+            up = b.get("upload")
+            if up:                                   # недоотправленный мир: отменяем загрузку на сервере и убираем архив (до 250+ МБ в out/)
+                self._abort_quiet(b, up)
+                try:
+                    Path(up.get("zip") or "").unlink(missing_ok=True)
+                except OSError:
+                    pass
+                b = self.state.update(b, upload=None) or b
             self.state.update(b, off=True)
             self.emit("cloud_update", {"instance": inst.id})
 

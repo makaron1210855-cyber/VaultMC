@@ -30,7 +30,7 @@ async function renderWorlds(body, inst) {
       <div class="item world" data-w="${esc(w.folder)}">
         ${w.icon ? `<img class="world-ic" src="${w.icon}" alt="">` : `<div class="world-ic ph">${ic('world')}</div>`}
         <div class="grow"><div class="title">${esc(w.name)}</div>
-          <div class="small faint">${[w.mode, w.version, fmtWhen(w.lastPlayed), fmtSize(w.size)].filter(Boolean).map(esc).join(' · ')}</div>
+          <div class="small faint">${[w.mode, w.version, fmtWhen(w.lastPlayed), fmtSize(w.size)].filter(Boolean).map(esc).join(' · ')}${w.cache > 50e6 ? ` · <span title="Кэш дальних чанков мода Distant Horizons: мод пересоздаст его сам. В копии мира и в облако он не попадает">кэш мода ${esc(fmtSize(w.cache))}</span>` : ''}</div>
           ${showCloud ? cloudRowHtml(cloud.worlds[w.folder]) : ''}</div>
         ${cloud.supported && cloud.enabled ? `<button class="btn sm ghost" data-c="toggle" data-on="${cloud.worlds[w.folder] && cloud.worlds[w.folder].status !== 'off' ? 0 : 1}" title="Хранить мир в облаке VaultMC">${ic('cloud')} ${cloud.worlds[w.folder] && cloud.worlds[w.folder].status !== 'off' ? 'Из облака' : 'В облако'}</button>` : ''}
         <button class="btn sm" data-a="backup" title="Сделать резервную копию" ${res.running ? 'disabled' : ''}>${ic('archive')} Копия</button>

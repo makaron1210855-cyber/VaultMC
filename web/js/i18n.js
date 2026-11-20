@@ -1072,7 +1072,6 @@ const I18N_EN = {
 "Один из модов уже убран — обновите проверку": "One of the mods is already gone — refresh the check",
 "Можно проверить: выключите один из них и запустите игру.": "To test: turn one of them off and start the game.",
 "Починка сборки": "Build repair",
-"Найти, что мешает запуску или даёт чёрный экран, и починить": "Find what blocks launch or causes a black screen, and fix it",
 "Проверяю моды, шейдеры, ресурспаки и журнал последнего запуска...": "Checking mods, shaders, resource packs and the last launch log...",
 "Не удалось проверить сборку": "Could not check the build",
 "Проблем в модах не найдено": "No mod problems found",
@@ -1939,6 +1938,11 @@ const I18N_EN = {
 "перед модами из «": "before mods from “",
 // 6.4.21: тексты из Python (проверка tools/i18n_scan.py)
 "Поиск сборки: Fabulously Optimized, RLCraft...": "Search modpacks: Fabulously Optimized, RLCraft...",
+// 6.4.21: тексты из Python (проверка tools/i18n_scan.py)
+"Только если Minecraft не запускается или даёт чёрный экран. Если игра работает — не нужно": "Only if Minecraft does not start or shows a black screen. If the game works — not needed",
+" Нужна, только если Minecraft не запускается или вылетает. Если игра работает — ничего здесь не трогайте.": " Needed only if Minecraft does not start or crashes. If the game works — do not touch anything here.",
+"Кэш дальних чанков мода Distant Horizons: мод пересоздаст его сам. В копии мира и в облако он не попадает": "Distant Horizons far-chunk cache: the mod recreates it by itself. It is not included in world copies or the cloud",
+"кэш мода ": "mod cache ",
 };
 
 const I18N = {

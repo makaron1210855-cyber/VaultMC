@@ -129,6 +129,18 @@ def world_files(world: Path):
             yield f
 
 
+def _cache_size(world: Path) -> int:
+    """Сколько места занимает кэш модов в мире (Distant Horizons и т. п.): в копии и в облако он не идёт."""
+    total = 0
+    for f in world.rglob("*"):
+        try:
+            if f.is_file() and is_cache(f.relative_to(world)):
+                total += f.stat().st_size
+        except OSError:
+            pass
+    return total
+
+
 def _world_size(world: Path) -> int:
     """Размер того, что попадёт в копию мира (без кэша модов)."""
     return sum(f.stat().st_size for f in world_files(world))
@@ -156,7 +168,7 @@ def list_worlds(game_dir: Path) -> list[dict]:
             pass
         icon = d / "icon.png"
         worlds.append({"folder": d.name, "name": name, "mode": "Хардкор" if hardcore else mode, "version": version,
-                       "lastPlayed": last, "size": _dir_size(d),
+                       "lastPlayed": last, "size": _world_size(d), "cache": _cache_size(d),
                        "icon": "data:image/png;base64," + base64.b64encode(icon.read_bytes()).decode() if icon.is_file() else ""})
     worlds.sort(key=lambda w: w["lastPlayed"], reverse=True)
     return worlds

@@ -56,6 +56,15 @@ class WorldTests(unittest.TestCase):
         self.assertEqual([n for n in names if "DistantHorizons" in n], [], "кэш Distant Horizons в копию не попадает")
         self.assertNotIn("Alpha/session.lock", names)
 
+    def test_list_shows_world_size_without_cache(self):
+        # в списке миров было 10,4 ГБ при настоящем мире в 0,5 ГБ: считался и кэш Distant Horizons
+        self.add_dh_cache("Alpha", size=200_000)
+        a = next(w for w in W.list_worlds(self.game) if w["folder"] == "Alpha")
+        self.assertLess(a["size"], 10_000)
+        self.assertEqual(a["cache"], 600_000)
+        b = next(w for w in W.list_worlds(self.game) if w["folder"] == "Beta")
+        self.assertEqual(b["cache"], 0)
+
     def test_auto_backup_not_blocked_by_cache(self):
         # раньше мир с кэшем Distant Horizons считался «больше 2 ГБ», и автокопия не делалась вовсе
         self.add_dh_cache("Alpha", size=4000)            # кэш 12 000 байт, сам мир ~1 000
