@@ -6,7 +6,7 @@
 
 ## Как установить (Windows)
 
-Запустите **VaultMC-Setup.exe** → «Далее» → «Установить» → «Готово».
+Скачайте установщик на странице [Releases](https://github.com/makaron1210855-cyber/VaultMC/releases/latest) (или на [сайте](https://vaultmc.vaultmc.workers.dev)), запустите его → «Далее» → «Установить» → «Готово».
 Внутри установщика уже есть Python и всё нужное. Он создаёт ярлыки на рабочем столе и в меню «Пуск», а удаляется через «Параметры → Приложения». Java для игры лаунчер скачает сам.
 
 Если лаунчер не открывается, запустите `debug.bat` в папке `%LOCALAPPDATA%\Programs\VaultMC\app`. Журнал запуска лежит в `%USERPROFILE%\.vaultmc\launcher.log`.
