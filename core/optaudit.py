@@ -26,14 +26,28 @@ from .modsafe import removal_check
 from .modupdates import _title
 
 # Роли: от лучшего к худшему. Если в сборке есть несколько — остаётся первый из найденных.
+# (ключи label / why — тексты для окна; по ним же работает перевод интерфейса, tools/i18n_scan.py)
 ROLES = (
-    ("рендер (Sodium и его ответвления)", ("sodium", "embeddium", "rubidium", "xenon"),
-     "Это разные версии одного и того же ускорителя отрисовки — вместе они мешают друг другу."),
-    ("оптимизация игровой логики (Lithium и его ответвления)", ("lithium", "radium", "canary"),
-     "Это ответвления одного мода Lithium — вместе они дублируют друг друга."),
-    ("движок освещения", ("scalablelux", "starlight", "phosphor"),
-     "Два движка света переписывают одно и то же место игры — вместе освещение ломается."),
+    {"label": "«рендер (Sodium и его ответвления)»", "ids": ("sodium", "embeddium", "rubidium", "xenon"),
+     "why": "Это разные версии одного и того же ускорителя отрисовки — вместе они мешают друг другу."},
+    {"label": "«оптимизация игровой логики (Lithium и его ответвления)»", "ids": ("lithium", "radium", "canary"),
+     "why": "Это ответвления одного мода Lithium — вместе они дублируют друг друга."},
+    {"label": "«движок освещения»", "ids": ("scalablelux", "starlight", "phosphor"),
+     "why": "Два движка света переписывают одно и то же место игры — вместе освещение ломается."},
+    {"label": "«динамическое освещение (свет от предмета в руке)»",
+     "ids": ("lambdynlights", "dynamiclights", "ryoamiclights", "dynamic_lights"),
+     "why": "Два мода делают одно и то же — светят от предмета в руке. Вместе они спорят, у кого свет главнее, и оба лишний раз нагружают игру."},
 )
+
+# Моды оптимизации (для подсчёта «сколько их у вас» и для правила про экспериментальные версии).
+OPTIMIZATION_IDS = {
+    "sodium", "embeddium", "rubidium", "xenon", "lithium", "radium", "canary", "ferritecore", "modernfix", "immediatelyfast",
+    "entityculling", "moreculling", "cullleaves", "memoryleakfix", "badoptimizations", "smoothboot", "dynamic_fps", "dynamic-fps",
+    "zfastnoise", "particle_core", "c2me", "vmp", "krypton", "scalablelux", "starlight", "phosphor", "sodium-extra", "indium",
+    "fastquit", "lazydfu", "clumps", "enhancedblockentities", "noxesium", "saturn", "threadtuner", "fast-ip-ping",
+}
+# Оптимизаторы, которые автор сам называет экспериментальными (в версии есть alpha / beta / rc / snapshot).
+EXPERIMENTAL_WORDS = ("alpha", "beta", "snapshot", "-rc", ".rc")
 
 # Библиотеки без собственного содержимого: нужны, только если их требует другой мод.
 LIBRARIES = {
@@ -73,14 +87,15 @@ def scan(mods_dir: Path, loader: str, game_version: str, titles: dict | None = N
 
     def add(file: str, kind: str, why: str, keep: str = "") -> None:
         if file in by_file and file not in found:
-            found[file] = {"id": f"{kind}:{file}", "file": file, "name": name(file), "kind": kind, "why": why, "keep": keep}
+            found[file] = {"id": f"{kind}:{file}", "file": file, "name": name(file), "kind": kind, "why": why, "keep": keep,
+                           "tier": "maybe" if kind == "maybe" else "sure"}
 
     def holders(ids) -> list[ModInfo]:
         return [m for m in mods if set(ids) & set(m.ids)]
 
     # --- два мода одной роли
-    for role, ids, why in ROLES:
-        present = [(i, holders([i])) for i in ids]
+    for role in ROLES:
+        present = [(i, holders([i])) for i in role["ids"]]
         present = [(i, h) for i, h in present if h]
         if len(present) > 1:
             best_id, best = present[0]
@@ -88,8 +103,8 @@ def scan(mods_dir: Path, loader: str, game_version: str, titles: dict | None = N
                 for o in others:
                     if o.file == best[0].file:
                         continue
-                    add(o.file, "twin", f"В сборке два мода одной роли — {role}: «{name(best[0].file)}» и «{name(o.file)}». {why} "
-                                        f"Оставлен «{name(best[0].file)}».", best[0].file)
+                    add(o.file, "twin", f"В сборке два мода одной роли — {role['label']}: «{name(best[0].file)}» и «{name(o.file)}». "
+                                        f"{role['why']} Оставлен «{name(best[0].file)}».", best[0].file)
 
     # --- Indium при Sodium 0.6+
     sodium = holders(["sodium"])
@@ -135,10 +150,33 @@ def scan(mods_dir: Path, loader: str, game_version: str, titles: dict | None = N
         if not changed:
             break
 
+    # --- «необязательное»: пересечения и экспериментальные версии. Ломать игру они не обязаны — убирать или нет, решает игрок
+    fix = holders(["modernfix"])
+    if fix:
+        for m in holders(["memoryleakfix"]):
+            add(m.file, "maybe", "У ModernFix своя защита от утечек памяти, и она пересекается с Memory Leak Fix. Вместе они не ломают игру — "
+                         "но если хотите меньше модов, Memory Leak Fix можно убрать.", fix[0].file)
+    for m in holders(["vmp"]):
+        add(m.file, "maybe", "VMP («Very Many Players») ускоряет сервер, к которому подключено много игроков. В одиночной игре и в комнате "
+                     "на пару друзей прироста почти нет. Если вы поднимаете свой сервер из этой сборки — на сервере он полезен, оставьте.")
+    for m in mods:
+        main = m.ids[0] if m.ids and m.ids[0] else ""
+        if main in OPTIMIZATION_IDS and m.file not in found and any(w in (m.version or "").lower() for w in EXPERIMENTAL_WORDS):
+            add(m.file, "maybe", f"«{name(m.file)}» — экспериментальная версия ({m.version}): сам автор считает её сырой. Такие оптимизаторы чаще других "
+                         "дают вылеты и «фризы». Если игра работает без сбоев — можно оставить.")
+
     # то, что убирать нельзя (от мода зависят другие), в список не попадает
-    files = list(found)
-    allowed, _blocked = removal_check(mods_dir, loader, game_version, files)
-    return sorted((found[f] for f in allowed), key=lambda x: (x["kind"], x["name"].lower()))
+    allowed, _blocked = removal_check(mods_dir, loader, game_version, list(found))
+    items = [found[f] for f in allowed]
+    items.sort(key=lambda x: (x["tier"] != "sure", x["kind"], x["name"].lower()))
+    return items
+
+
+def count_optimization(mods_dir: Path) -> int:
+    """Сколько в сборке включённых модов оптимизации (для строки «у вас их N»)."""
+    if not mods_dir.is_dir():
+        return 0
+    return sum(1 for m in _scan(mods_dir) if (m.ids[0] if m.ids and m.ids[0] else "") in OPTIMIZATION_IDS)
 
 
 def apply(mods_dir: Path, loader: str, game_version: str, files: list[str]) -> dict:

@@ -9,6 +9,7 @@ const OA_KINDS = {
   conflict: 'мешает другому моду',
   dup: 'лежит дважды',
   library: 'никто не просит',
+  maybe: 'на ваше усмотрение',
 };
 
 function openModAudit(inst, onDone) {
@@ -24,25 +25,33 @@ function openModAudit(inst, onDone) {
     const r = await safe(api.mod_audit(inst.id));
     if (!m.isConnected) return;
     if (!r || r.error) { body.innerHTML = `<p class="note">${esc(r?.error || 'Не удалось проверить моды')}</p>`; return; }
+    const optNote = r.optimization ? ` Из них модов оптимизации: ${r.optimization}.` : '';
     if (!r.items.length) {
       body.innerHTML = `<div class="crash-item"><div class="grow"><b>${ic('check')} Лишнего не найдено</b>
-        <p class="small muted">Проверено модов: ${r.mods}. Дублей, конфликтующих и бесполезных модов нет — набор в порядке, ничего убирать не нужно.</p></div></div>
+        <p class="small muted">Проверено модов: ${r.mods}.${optNote} Дублей, конфликтующих и бесполезных модов нет — набор в порядке, ничего убирать не нужно.</p></div></div>
         <div class="foot"><div class="grow"></div><button class="btn primary" data-close>Закрыть</button></div>`;
       hydrateIcons(body);
       body.querySelectorAll('[data-close]').forEach((b) => (b.onclick = m.close));
       return;
     }
-    body.innerHTML = `
-      <p class="small muted">Проверено модов: ${r.mods}. Найдено лишнего: <b>${r.items.length}</b>. Снимите галочку с того, что хотите оставить.</p>
-      <div class="list" style="max-height:min(400px,48vh);overflow:auto">${r.items.map((i) => `
+    const sure = r.items.filter((i) => i.tier !== 'maybe'), maybe = r.items.filter((i) => i.tier === 'maybe');
+    const row = (i) => `
         <div class="item" style="padding:8px 12px;align-items:flex-start">
           <label class="check grow" style="gap:12px;align-items:flex-start">
-            <input type="checkbox" data-f="${esc(i.file)}" checked><span class="box">${iconSvg('check')}</span>
-            <div class="grow"><div class="title">${esc(i.name)} <span class="chip warn">${esc(OA_KINDS[i.kind] || '')}</span></div>
+            <input type="checkbox" data-f="${esc(i.file)}" ${i.tier === 'maybe' ? '' : 'checked'}><span class="box">${iconSvg('check')}</span>
+            <div class="grow"><div class="title">${esc(i.name)} <span class="chip ${i.tier === 'maybe' ? '' : 'warn'}">${esc(OA_KINDS[i.kind] || '')}</span></div>
               <div class="small faint">${esc(i.file)}</div>
-              <div class="small muted" style="margin-top:4px;line-height:1.45">${esc(i.why)}</div></div></label></div>`).join('')}</div>
+              <div class="small muted" style="margin-top:4px;line-height:1.45">${esc(i.why)}</div></div></label></div>`;
+    body.innerHTML = `
+      <p class="small muted">Проверено модов: ${r.mods}.${optNote} Найдено точно лишнего: <b>${sure.length}</b>${maybe.length ? `, необязательного: ${maybe.length}` : ''}.
+        Снимите галочку с того, что хотите оставить.</p>
+      <div style="max-height:min(420px,50vh);overflow:auto">
+        ${sure.length ? `<div class="h2" style="margin:4px 0 6px">Точно лишнее</div><div class="list">${sure.map(row).join('')}</div>` : ''}
+        ${maybe.length ? `<div class="h2" style="margin:12px 0 4px">Необязательно — решайте сами</div>
+          <p class="small faint" style="margin:0 0 6px">Игру они не ломают, но пересекаются с другими модами или ещё сырые. По умолчанию не отмечены.</p>
+          <div class="list">${maybe.map(row).join('')}</div>` : ''}</div>
       <div class="foot"><button class="btn ghost" data-close>Ничего не трогать</button>
-        <button class="btn primary" id="oaGo">${ic('trash')} Отключить выбранные (${r.items.length})</button></div>`;
+        <button class="btn primary" id="oaGo">${ic('trash')} Отключить выбранные (${sure.length})</button></div>`;
     hydrateIcons(body);
     body.querySelectorAll('[data-close]').forEach((b) => (b.onclick = m.close));
     const boxes = () => [...body.querySelectorAll('input[data-f]')];

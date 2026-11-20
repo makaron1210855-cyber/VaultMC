@@ -126,8 +126,8 @@ async function renderTab(el, inst) {
   if (el.__tab === 'shots') return renderShots(body, inst);
   if (el.__tab === 'history') return renderHistory(body, inst);
   if (el.__tab === 'mods') {
-    body.innerHTML = `<div class="row" style="margin-bottom:10px">
-        <div class="search grow">${ic('search')}<input class="input" id="modFilter" placeholder="Фильтр модов"></div>
+    body.innerHTML = `<div class="row wrap" style="margin-bottom:10px">
+        <div class="search grow" style="min-width:220px">${ic('search')}<input class="input" id="modFilter" placeholder="Фильтр модов"></div>
         <button class="btn" data-a="add">${ic('plus')} Файл .jar</button>
         ${inst.loader !== 'vanilla' ? `<button class="btn" data-a="updates">${ic('refresh')} Обновления</button>
         <button class="btn" data-a="rollback" title="Вернуть мод к версии до обновления">${ic('refresh')} Откат</button>` : ''}

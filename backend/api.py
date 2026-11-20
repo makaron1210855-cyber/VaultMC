@@ -2247,7 +2247,8 @@ class Api(ServerApiMixin):
         titles = {Path(str(e.get("file", ""))).name: e.get("title") for e in ModIndex(inst.game_dir).data.values()
                   if isinstance(e, dict) and e.get("file")}
         items = optaudit.scan(inst.game_dir / "mods", inst.loader, inst.game_version, titles)
-        return {"items": items, "mods": len([m for m in ModManager(inst.game_dir).list_mods() if m.enabled])}
+        return {"items": items, "mods": len([m for m in ModManager(inst.game_dir).list_mods() if m.enabled]),
+                "optimization": optaudit.count_optimization(inst.game_dir / "mods")}
 
     def mod_audit_apply(self, instance_id: str, files: list) -> dict:
         """Выключить выбранные «лишние» моды (имя.jar.disabled). Перед этим — точка в «Истории»."""

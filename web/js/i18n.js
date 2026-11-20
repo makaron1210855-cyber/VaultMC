@@ -1970,7 +1970,6 @@ const I18N_EN = {
 " Лишнего не найдено": " Nothing unneeded found",
 "Проверено модов: ": "Mods checked: ",
 ". Дублей, конфликтующих и бесполезных модов нет — набор в порядке, ничего убирать не нужно.": ". There are no duplicate, conflicting or useless mods — the set is fine, nothing needs to be removed.",
-". Найдено лишнего: ": ". Unneeded found: ",
 ". Снимите галочку с того, что хотите оставить.": ". Untick whatever you want to keep.",
 "Ничего не трогать": "Leave everything",
 " Отключить выбранные (": " Turn off selected (",
@@ -1990,6 +1989,28 @@ const I18N_EN = {
 // 6.4.21: тексты из Python (проверка tools/i18n_scan.py)
 "Последний перенос — модов: ": "Last transfer — mods: ",
 ", из «": ", from “",
+// 6.4.21: тексты из Python (проверка tools/i18n_scan.py)
+"на ваше усмотрение": "up to you",
+" Из них модов оптимизации: ": " Of them optimization mods: ",
+" Дублей, конфликтующих и бесполезных модов нет — набор в порядке, ничего убирать не нужно.": " There are no duplicate, conflicting or useless mods — the set is fine, nothing needs to be removed.",
+" Найдено точно лишнего: ": " Definitely unneeded found: ",
+", необязательного: ": ", optional: ",
+"Точно лишнее": "Definitely unneeded",
+"Необязательно — решайте сами": "Optional — you decide",
+"Игру они не ломают, но пересекаются с другими модами или ещё сырые. По умолчанию не отмечены.": "They do not break the game, but overlap with other mods or are still experimental. Not ticked by default.",
+// 6.4.21: тексты из Python (проверка tools/i18n_scan.py)
+"«рендер (Sodium и его ответвления)»": "“renderer (Sodium and its forks)”",
+"Это разные версии одного и того же ускорителя отрисовки — вместе они мешают друг другу.": "These are different versions of the same rendering accelerator — together they get in each other's way.",
+"«оптимизация игровой логики (Lithium и его ответвления)»": "“game-logic optimization (Lithium and its forks)”",
+"Это ответвления одного мода Lithium — вместе они дублируют друг друга.": "These are forks of the same Lithium mod — together they duplicate each other.",
+"«движок освещения»": "“lighting engine”",
+"Два движка света переписывают одно и то же место игры — вместе освещение ломается.": "Two lighting engines rewrite the same part of the game — together the lighting breaks.",
+"«динамическое освещение (свет от предмета в руке)»": "“dynamic lighting (light from the item in your hand)”",
+"Два мода делают одно и то же — светят от предмета в руке. Вместе они спорят, у кого свет главнее, и оба лишний раз нагружают игру.": "Two mods do the same thing — they emit light from the item in your hand. Together they argue about whose light wins and both load the game for nothing.",
+"VMP («Very Many Players») ускоряет сервер, к которому подключено много игроков. В одиночной игре и в комнате на пару друзей прироста почти нет. Если вы поднимаете свой сервер из этой сборки — на сервере он полезен, оставьте.": "VMP (“Very Many Players”) speeds up a server with many players connected. In single player and in a room with a couple of friends the gain is almost nil. If you run your own server from this instance, it is useful on the server — keep it.",
+"У ModernFix своя защита от утечек памяти, и она пересекается с Memory Leak Fix. Вместе они не ломают игру — но если хотите меньше модов, Memory Leak Fix можно убрать.": "ModernFix has its own protection against memory leaks, and it overlaps with Memory Leak Fix. Together they do not break the game — but if you want fewer mods, Memory Leak Fix can be removed.",
+"» — экспериментальная версия (": "” is an experimental version (",
+"): сам автор считает её сырой. Такие оптимизаторы чаще других дают вылеты и «фризы». Если игра работает без сбоев — можно оставить.": "): the author themselves considers it raw. Such optimizers crash and stutter more often than others. If the game runs without problems — you can keep it.",
 };
 
 const I18N = {
