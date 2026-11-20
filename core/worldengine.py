@@ -263,6 +263,12 @@ class CloudEngine:
             self.emit("cloud_choose", {"instance": inst.id, "folder": b["folder"]})
         return d
 
+    def fresh(self, seconds: float) -> bool:
+        """Все списки облака получены успешно и не раньше чем `seconds` назад."""
+        now = time.time()
+        have = list(self._cloud.values())
+        return bool(have) and all(v.get("ok") and now - v.get("at", 0) < seconds for v in have)
+
     def sync_all(self) -> None:
         """Запуск лаунчера и раз в 15 минут: список облака → отправить изменённые, заранее скачать новые."""
         if not self.enabled():

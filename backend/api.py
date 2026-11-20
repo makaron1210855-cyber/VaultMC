@@ -2050,6 +2050,8 @@ class Api(ServerApiMixin):
 
     def cloud_refresh(self) -> dict:
         """Вкладка «Миры» открыта: свежий список облака в фоне (результат — событием cloud_update)."""
+        if self._cloud.fresh(30):          # список только что получен: cloud_update перерисовывает страницу и снова зовёт сюда
+            return {"ok": True, "skipped": True}
         threading.Thread(target=self._cloud.sync_all, daemon=True).start()
         return {"ok": True}
 
