@@ -223,13 +223,19 @@ class Installers(unittest.TestCase):
         meta = "<metadata><versioning><release>0.9.1</release></versioning></metadata>"
         with mock.patch.object(SP, "_get_text", return_value=meta), \
                 mock.patch.object(SP, "download") as dl, \
-                mock.patch.object(self.builder, "_run_installer",
-                                  self.run_installer(lambda f: (f / "quilt-server-launch.jar").write_bytes(b""))):
+                mock.patch.object(self.builder, "_run_installer", self.run_installer(
+                    lambda f: [(f / n).write_bytes(b"") for n in ("quilt-server-launch.jar", "server.jar")])):
             args = self.builder._quilt(self.d, "1.21.1", "0.26.4", "java")
         self.assertIn("quilt-installer-0.9.1.jar", str(dl.call_args[0][0]))
         self.assertEqual(self.cmds[0][-6:], ["install", "server", "1.21.1", "0.26.4", "--download-server",
                                              f"--install-dir={self.d}"][-6:])
         self.assertEqual(args, ["-jar", "quilt-server-launch.jar", "nogui"])
+
+    def test_quilt_downloads_missing_server_jar(self):
+        with mock.patch.object(SP, "_get_text", return_value="<release>0.9.1</release>"),                 mock.patch.object(SP, "download"),                 mock.patch.object(self.builder, "vanilla_jar") as vj,                 mock.patch.object(self.builder, "_run_installer",
+                                  self.run_installer(lambda f: (f / "quilt-server-launch.jar").write_bytes(b""))):
+            self.builder._quilt(self.d, "1.20.1", "0.30.0", "java")
+        vj.assert_called_once_with("1.20.1", self.d / "server.jar")
 
     def test_quilt_without_launch_jar_fails(self):
         with mock.patch.object(SP, "_get_text", return_value="<release>0.9.1</release>"), \

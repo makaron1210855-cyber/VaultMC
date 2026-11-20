@@ -199,6 +199,11 @@ class Builder:
                              f"--install-dir={folder}"], folder, "Установщик Quilt")
         if not (folder / "quilt-server-launch.jar").exists():
             raise ServerError("Установщик Quilt не создал quilt-server-launch.jar")
+        if not (folder / "server.jar").is_file():
+            # на проверке 20.11.2026 установщик при «--download-server» иногда не клал server.jar (Quilt падал с «Missing game jar») —
+            # докачиваем сами, как для Fabric; quilt-server-launcher.properties по умолчанию ищет именно server.jar
+            self.log("[Сервер] установщик Quilt не положил server.jar — скачиваю сам")
+            self.vanilla_jar(mc, folder / "server.jar")
         return ["-jar", "quilt-server-launch.jar", "nogui"]
 
     def _forge(self, folder: Path, loader: str, mc: str, ver: str, java: str) -> list[str]:
