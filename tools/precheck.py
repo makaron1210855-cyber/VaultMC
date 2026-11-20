@@ -51,7 +51,7 @@ def main() -> int:
     results = {
         "compileall": run("compileall", [sys.executable, "-m", "compileall", "-q", "core", "backend", "main.py", "tools"]),
         "node --check": node_check(),
-        "node --test": run("node --test tests/", ["node", "--test", "tests/"]),
+        "node --test": run("node --test tests/", ["node", "--test", *sorted(str(f.relative_to(ROOT)) for f in ROOT.glob("tests/*.test.mjs"))]),
         "python tests": run("python tests (в т.ч. перевод)", [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-q"]),
         "пометки": leftovers(),
     }
