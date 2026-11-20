@@ -142,8 +142,14 @@ def _cache_size(world: Path) -> int:
 
 
 def _world_size(world: Path) -> int:
-    """Размер того, что попадёт в копию мира (без кэша модов)."""
-    return sum(f.stat().st_size for f in world_files(world))
+    """Размер того, что попадёт в копию мира (без кэша модов). Файл, пропавший по ходу (игра пишет мир), пропускаем."""
+    total = 0
+    for f in world_files(world):
+        try:
+            total += f.stat().st_size
+        except OSError:
+            pass
+    return total
 
 
 def list_worlds(game_dir: Path) -> list[dict]:
@@ -167,9 +173,12 @@ def list_worlds(game_dir: Path) -> list[dict]:
         except Exception:  # noqa: BLE001  повреждённый level.dat — показываем по имени папки
             pass
         icon = d / "icon.png"
+        try:
+            icon_data = "data:image/png;base64," + base64.b64encode(icon.read_bytes()).decode() if icon.is_file() else ""
+        except OSError:                       # icon.png пишет игра при выходе из мира — может быть занят
+            icon_data = ""
         worlds.append({"folder": d.name, "name": name, "mode": "Хардкор" if hardcore else mode, "version": version,
-                       "lastPlayed": last, "size": _world_size(d), "cache": _cache_size(d),
-                       "icon": "data:image/png;base64," + base64.b64encode(icon.read_bytes()).decode() if icon.is_file() else ""})
+                       "lastPlayed": last, "size": _world_size(d), "cache": _cache_size(d), "icon": icon_data})
     worlds.sort(key=lambda w: w["lastPlayed"], reverse=True)
     return worlds
 

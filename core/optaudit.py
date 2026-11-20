@@ -186,9 +186,10 @@ def apply(mods_dir: Path, loader: str, game_version: str, files: list[str]) -> d
     for f in allowed:
         src = mods_dir / f
         dst = src.with_name(src.name + ".disabled")
+        if dst.exists():                      # уже есть выключенная копия (возможно, другая версия) — её не трогаем
+            blocked[f] = "рядом уже лежит выключенная копия с таким именем — разберите её на вкладке «Моды»"
+            continue
         try:
-            if dst.exists():
-                dst.unlink()
             src.rename(dst)
             done.append(f)
         except OSError as exc:

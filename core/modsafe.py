@@ -40,9 +40,14 @@ def _dep_issues(mods_dir: Path, loader: str, game_version: str, skip: set[str]) 
         shutil.rmtree(work, ignore_errors=True)
 
 
+def is_plain_jar(name: str) -> bool:
+    """Имя файла мода в папке mods: без путей («../x.jar», «C:\\x.jar») и с расширением .jar."""
+    return bool(name) and Path(name).name == name and name.lower().endswith(".jar")
+
+
 def removal_check(mods_dir: Path, loader: str, game_version: str, files: list[str]) -> tuple[list[str], dict[str, str]]:
     """(можно убрать, нельзя: файл → почему). Порядок файлов сохраняется."""
-    wanted = [f for f in files if (mods_dir / f).is_file()]
+    wanted = [f for f in files if is_plain_jar(f) and (mods_dir / f).is_file()]
     if not wanted:
         return [], {}
     infos = {m.file: m for m in _scan(mods_dir)}
