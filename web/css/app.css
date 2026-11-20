@@ -1448,3 +1448,7 @@ body.gaming .launch-card { animation: none; }
 .srv-addr { cursor: pointer; }
 .srv-mods { max-height: 380px; overflow: auto; }
 .srv-mods .check { flex: none; }
+
+/* карточка облака лежит в обёртке #cloudCard — правило «.card + .card» её не видит */
+#cloudCard:not(:empty) { margin-top: 14px; }
+#cloudCard + .card { margin-top: 14px; }
