@@ -295,22 +295,8 @@ def room(name: str, action: str, code: str = "", info: dict | None = None) -> di
 
 def lookup_room(name: str, code: str) -> dict:
     """Поиск комнаты от имени игрока (сервер 6.4.20+): хозяин, заблокировавший игрока, для него «комнаты нет».
-    Старый сервер ответит «неизвестное действие» — тогда вызывающий откатывается на get_room."""
+    С 9.0.0 это единственный способ найти комнату."""
     return _authed(name, "/api/room", {"action": "lookup", "code": code})
-
-
-def get_room(code: str) -> dict:
-    """К кому и в какую версию заходить по коду комнаты. Не требует аккаунта."""
-    url = server_url()
-    if not url:
-        raise SkinServerError("Сервер VaultMC не настроен")
-    try:
-        return get_json(f"{url}/api/room/{code}", timeout=10, attempts=2)
-    except HttpError as exc:
-        body = exc.body if isinstance(exc.body, dict) else {}
-        raise SkinServerError(body.get("error") or "Комната не найдена", exc.status, str(body.get("code") or "")) from None
-    except OSError as exc:
-        raise SkinServerError(f"Нет связи с сервером VaultMC: {exc}") from None
 
 
 def p2p(name: str, action: str, **extra) -> dict:

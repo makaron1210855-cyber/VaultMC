@@ -9,8 +9,7 @@
   CHECK <порт> <ключ>  — проверить комнату, не подключаясь: «OK» или «ERR <причина>».
   DATA <id>            — хозяин открывает соединение для гостя <id>.
   PING                 — ответ «PONG» (лаунчер меряет задержку).
-  HOST                 — старый способ (лаунчеры до 6.4.14): комната без ключа, гости заходят прямо на публичный
-                         порт. Временно, пока все не обновятся; убрать после 1.0.
+  (команда HOST без ключа удалена в 9.0.0 — лаунчеры до 6.4.14 её больше не получат.)
 
 Публичные порты PORT_MIN..PORT_MAX пускают гостей только в комнаты старого способа. В комнату с ключом
 без ключа не попасть — перебор портов ничего не даёт.
@@ -231,8 +230,6 @@ async def on_control(reader, writer):
         if cmd == "HOST2" and len(parts) in (2, 3) and KEY_RE.match(parts[1]):
             want = int(parts[2]) if len(parts) == 3 and parts[2].isdigit() else None
             await host_room(writer, parts[1], want, ip)
-        elif cmd == "HOST" and len(parts) == 1:
-            await host_room(writer, None, None, ip)
         elif cmd in ("JOIN", "CHECK") and len(parts) == 3:
             if too_many_joins(ip):
                 await say(writer, "ERR limit")

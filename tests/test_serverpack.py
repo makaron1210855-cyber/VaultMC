@@ -201,3 +201,64 @@ class Loader(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Installers(unittest.TestCase):
+    """Quilt и NeoForge: установщики заменены заглушками — проверяем команды и аргументы запуска (без сети)."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.d = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+        self.cmds: list[list[str]] = []
+        self.builder = SP.Builder(None, lambda major: "java", lambda m: None, lambda f, m: None)
+
+    def run_installer(self, create):
+        def fake(cmd, folder, what):
+            self.cmds.append(cmd)
+            create(folder)
+        return fake
+
+    def test_quilt_command_and_launch(self):
+        meta = "<metadata><versioning><release>0.9.1</release></versioning></metadata>"
+        with mock.patch.object(SP, "_get_text", return_value=meta), \
+                mock.patch.object(SP, "download") as dl, \
+                mock.patch.object(self.builder, "_run_installer",
+                                  self.run_installer(lambda f: (f / "quilt-server-launch.jar").write_bytes(b""))):
+            args = self.builder._quilt(self.d, "1.21.1", "0.26.4", "java")
+        self.assertIn("quilt-installer-0.9.1.jar", str(dl.call_args[0][0]))
+        self.assertEqual(self.cmds[0][-6:], ["install", "server", "1.21.1", "0.26.4", "--download-server",
+                                             f"--install-dir={self.d}"][-6:])
+        self.assertEqual(args, ["-jar", "quilt-server-launch.jar", "nogui"])
+
+    def test_quilt_without_launch_jar_fails(self):
+        with mock.patch.object(SP, "_get_text", return_value="<release>0.9.1</release>"), \
+                mock.patch.object(SP, "download"), \
+                mock.patch.object(self.builder, "_run_installer", self.run_installer(lambda f: None)):
+            with self.assertRaises(SP.ServerError):
+                self.builder._quilt(self.d, "1.20.1", "0.26.4", "java")
+
+    def test_neoforge_launch_args(self):
+        def create(folder):
+            lib = folder / "libraries/net/neoforged/neoforge/21.1.77"
+            lib.mkdir(parents=True)
+            (lib / "win_args.txt").write_text("x")
+            (folder / "installer.log").write_text("log")
+        with mock.patch.object(SP, "download"), \
+                mock.patch.object(self.builder, "_run_installer", self.run_installer(create)):
+            args = self.builder._forge(self.d, "neoforge", "1.21.1", "21.1.77", "java")
+        self.assertEqual(args, ["@libraries/net/neoforged/neoforge/21.1.77/win_args.txt", "nogui"])
+        self.assertIn("--installServer", self.cmds[0])
+        self.assertFalse((self.d / "installer.log").exists(), "журнал установщика убран")
+
+    def test_neoforge_1_20_1_uses_legacy_jar(self):
+        (self.d / "forge-1.20.1-47.1.106.jar").write_bytes(b"")
+        (self.d / "forge-1.20.1-47.1.106-installer.jar").write_bytes(b"")
+        self.assertEqual(SP.forge_launch_args(self.d, "47.1.106"), ["-jar", "forge-1.20.1-47.1.106.jar", "nogui"])
+
+    def test_unix_script_swaps_args_file(self):
+        SP.write_scripts(self.d, ["@libraries/net/neoforged/neoforge/21.1.77/win_args.txt", "nogui"], 4, 21, "T")
+        sh = (self.d / "start.sh").read_text(encoding="utf-8")
+        self.assertIn("unix_args.txt", sh)
+        self.assertNotIn("win_args.txt", sh)
+        self.assertNotIn("\r", sh, "в start.sh не должно быть CRLF")
