@@ -2397,6 +2397,31 @@ class Api(ServerApiMixin):
                 "shaders_on": packs.shader_state(inst.game_dir)["on"],
                 "running": self._instance_running(instance_id)}
 
+    # ---------------------------------------------------------------- «Картинка выглядит не так» (core/visualfix.py)
+    def visual_scan(self, instance_id: str) -> dict:
+        """Что делают включённые ресурспаки, какие слои отрисовки можно выключить и какие модели из пака отключены."""
+        from core import visualfix
+        inst = self._inst(instance_id)
+        return {**visualfix.scan(inst.game_dir), "running": self._instance_running(instance_id)}
+
+    def _visual_guard(self, instance_id: str):
+        if self._instance_running(instance_id):
+            return {"error": "Закройте игру: моды читают настройки при запуске, а при выходе игра сохранит свои поверх новых"}
+        return None
+
+    def visual_layer_set(self, instance_id: str, layer_id: str, enabled: bool) -> dict:
+        from core import visualfix
+        return self._visual_guard(instance_id) or visualfix.set_layer(self._inst(instance_id).game_dir, str(layer_id), bool(enabled))
+
+    def visual_models_set(self, instance_id: str, disable: list, enable: list) -> dict:
+        from core import visualfix
+        return self._visual_guard(instance_id) or visualfix.set_models(
+            self._inst(instance_id).game_dir, [str(x) for x in disable], [str(x) for x in enable])
+
+    def visual_reset(self, instance_id: str) -> dict:
+        from core import visualfix
+        return self._visual_guard(instance_id) or visualfix.reset_all(self._inst(instance_id).game_dir)
+
     def pack_action(self, instance_id: str, action: str, kind: str = "resourcepack", name: str = "",
                     arg=None) -> dict:
         """action: toggle (arg — true/false) | move (arg — -1 выше, 1 ниже) | shader (name — '' выключить) |

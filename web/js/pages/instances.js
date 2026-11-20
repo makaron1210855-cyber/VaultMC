@@ -271,6 +271,7 @@ async function renderTab(el, inst) {
         <button class="btn" data-a="add" data-kind="shader">${ic('plus')} Шейдер .zip</button>
         <button class="btn" data-a="updates">${ic('refresh')} Обновления</button>
         <button class="btn" data-a="repair" title="Найти ошибки в ресурспаках и шейдерах и починить">${ic('shield')} Починка</button>
+        <button class="btn" data-a="visual" title="Если что-то в игре выглядит сломанным (у колокола висит только низ, странные пятна на мобах, швы на стёклах) — найдите, какой слой пака виноват, и выключите его">${ic('eraser')} Картинка не так?</button>
         <button class="btn primary" data-a="catalog">${ic('download')} Найти</button></div>
       <div id="packsBody"><div class="row muted"><span class="spinner"></span> Загрузка...</div></div>`;
     hydrateIcons(body);
@@ -324,6 +325,7 @@ async function renderTab(el, inst) {
       }
       if (a === 'updates') return openPackUpdates(inst, btn, reload);
       if (a === 'repair') return openRepair(inst, reload);
+      if (a === 'visual') return openVisualFix(inst);
       if (a === 'catalog') return go('catalog', { instance: inst.id, type: 'resourcepack' });
     };
     body.onchange = async (e) => {
