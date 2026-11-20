@@ -11,6 +11,8 @@ jobs:
   precheck:
     runs-on: windows-latest
     timeout-minutes: 20
+    env:
+      PYTHONUTF8: "1"          # консоль Windows на GitHub — cp1252, русские сообщения precheck иначе роняют скрипт
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
