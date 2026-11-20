@@ -499,28 +499,35 @@ async function roomModsGate(name, st, code) {
   const inst = S.selected;
   if (!mods || !mods.length || !inst) return true;
   const chk = await api.room_mods_check(inst.id, mods).catch(() => null);
-  if (!chk || !chk.missing || !chk.missing.length) return true;
+  const missing = (chk && chk.missing) || [], changed = (chk && chk.changed) || [];
+  if (!chk || (!missing.length && !changed.length)) return true;
   const mb = (n) => (n ? `${(n / 1048576).toFixed(1)} МБ` : '');
   const choice = await new Promise((resolve) => {
-    const rows = chk.missing.map((m, i) => `<label class="check gm-row"><input type="checkbox" data-i="${i}" ${chk.can ? 'checked' : 'disabled'}>
-      <span class="box">${iconSvg('check')}</span><span class="grow no-tr">${esc(m.name)}</span><small class="muted">${mb(m.size)}</small></label>`).join('');
-    const m = openModal(`<h3>${ic("alert")} <span class="no-tr">${esc(name)}</span>: есть моды, которых нет у вас</h3>
-      <p class="muted">Эти моды добавляют в мир свои звуки, частицы или предметы. Без них игра может выкинуть вас из мира через несколько минут.</p>
+    const row = (kind, i, m, note) => `<label class="check gm-row"><input type="checkbox" data-k="${kind}" data-i="${i}" ${chk.can ? 'checked' : 'disabled'}>
+      <span class="box">${iconSvg('check')}</span><span class="grow"><span class="no-tr">${esc(m.name)}</span>${note ? `<small class="muted no-tr"> ${esc(note)}</small>` : ''}</span><small class="muted">${mb(m.size)}</small></label>`;
+    const verNote = (m) => (m.have_ver && m.ver ? `у вас ${m.have_ver} → у друга ${m.ver}` : m.ver ? `версия друга ${m.ver}` : '');
+    const rows = missing.map((m, i) => row('add', i, m, m.ver ? `версия ${m.ver}` : '')).join('')
+      + changed.map((m, i) => row('upd', i, m, verNote(m))).join('');
+    const head = missing.length && changed.length ? 'есть моды, которых нет у вас, и моды другой версии'
+      : changed.length ? 'у вас другая версия модов' : 'есть моды, которых нет у вас';
+    const m = openModal(`<h3>${ic("alert")} <span class="no-tr">${esc(name)}</span>: ${head}</h3>
+      <p class="muted">Эти моды добавляют в мир свои звуки, частицы или предметы. Если их нет или версия другая, игра может выкинуть вас из мира через несколько минут.</p>
       <div class="gm-list">${rows}</div>
-      ${chk.can ? `<p class="small muted">Лаунчер поставит в вашу сборку «<span class="no-tr">${esc(inst.name)}</span>» только отмеченные моды (с Modrinth). Остальные моды друга вам не нужны. Убрать их потом можно в модах сборки.</p>`
+      ${chk.can ? `<p class="small muted">Лаунчер поставит в вашу сборку «<span class="no-tr">${esc(inst.name)}</span>» только отмеченные моды (с Modrinth)${changed.length ? ', а ваши моды другой версии заменит версией друга — старые файлы лежат в «Откате» на вкладке модов' : ''}. Остальные моды друга вам не нужны.</p>`
         : `<p class="small muted">В вашу сборку «<span class="no-tr">${esc(inst.name)}</span>» их поставить нельзя: для этого нужна сборка Fabric той же версии игры.</p>`}
-      <div class="foot"><button class="btn ghost" data-close>Отмена</button><button class="btn" id="gmSkip">Зайти без них</button>
+      <div class="foot"><button class="btn ghost" data-close>Отмена</button><button class="btn" id="gmSkip">Зайти как есть</button>
         ${chk.can ? `<button class="btn primary" id="gmOk">${ic('download')} Поставить и зайти</button>` : ''}</div>`,
     { onClose: () => resolve(null) });
-    $('#gmSkip', m).onclick = () => { closeModal(); resolve([]); };
+    $('#gmSkip', m).onclick = () => { closeModal(); resolve({ add: [], upd: [] }); };
     if (chk.can) $('#gmOk', m).onclick = () => {
-      const picked = $$('.gm-row input:checked', m).map((x) => chk.missing[+x.dataset.i]);
-      closeModal(); resolve(picked);
+      const pick = (kind, list) => $$(`.gm-row input[data-k="${kind}"]:checked`, m).map((x) => list[+x.dataset.i]);
+      const res = { add: pick('add', missing), upd: pick('upd', changed) };
+      closeModal(); resolve(res);
     };
   });
   if (!choice) return false;              // «Отмена» — не заходим
-  if (!choice.length) return true;        // отказался от модов — заходим как есть
-  const started = await safe(api.room_mods_install(inst.id, choice));
+  if (!choice.add.length && !choice.upd.length) return true;   // отказался от модов — заходим как есть
+  const started = await safe(api.room_mods_install(inst.id, choice.add, choice.upd));
   if (!started || !okOrToast(started)) return false;
   toast('Ставлю моды друга — это меньше минуты', 'info', 6000);
   const done = await new Promise((resolve) => { roomModsWait = resolve; setTimeout(() => roomModsEnd(null), 300000); });
@@ -528,6 +535,7 @@ async function roomModsGate(name, st, code) {
   const res = done && done.result;
   if (!res) { toast('Моды друга поставить не удалось — подробности в «Консоли». Захожу без них', 'warn', 9000); return true; }
   if (res.installed.length) toast(`Моды друга поставлены: ${res.installed.length}`);
+  if (res.updated && res.updated.length) toast(`Моды обновлены до версии друга: ${res.updated.length}`);
   if (res.failed.length) toast(`Не нашлись на Modrinth: ${res.failed.join(', ')}. Попросите эти файлы у друга`, 'warn', 12000);
   return true;
 }

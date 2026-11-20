@@ -439,27 +439,33 @@ class Api(ServerApiMixin):
         from core import roommods
         inst = self._instances.get(instance_id)
         if not inst:
-            return {"missing": [], "can": False}
+            return {"missing": [], "changed": [], "can": False}
         try:
             missing = roommods.missing_mods(inst.mods_dir, mods)
+            changed = roommods.changed_mods(inst.mods_dir, mods)
         except Exception as exc:  # noqa: BLE001
             _log(f"room mods check: {exc}")
-            missing = []
-        return {"missing": missing, "can": inst.loader in ("fabric", "quilt"), "instance": inst.name}
+            missing, changed = [], []
+        return {"missing": missing, "changed": changed, "can": inst.loader in ("fabric", "quilt"), "instance": inst.name}
 
-    def room_mods_install(self, instance_id: str, mods) -> dict:
-        """Гость согласился — ставим в его сборку выбранные моды хозяина (событие room_mods_done по окончании)."""
+    def room_mods_install(self, instance_id: str, mods, changed=None) -> dict:
+        """Гость согласился — ставим в его сборку выбранные моды хозяина (`mods`) и меняем моды другой версии на версию
+        хозяина (`changed`). Событие room_mods_done по окончании."""
         from core import roommods
         inst = self._inst(instance_id)
         if inst.loader not in ("fabric", "quilt"):
             return {"error": "В эту сборку моды друга не поставить — нужна сборка Fabric"}
         mods = roommods.clean_list(mods)
-        started = self._runner.run_task(
-            "Ставлю моды друга...",
-            lambda: {"instance": inst.id,
-                     "result": roommods.install_mods(inst.game_dir, inst.game_version, inst.loader, mods,
-                                                     lambda m: self._on_runner_event("log", m))},
-            "room_mods_done")
+        changed = roommods.clean_list(changed)
+        log = lambda m: self._on_runner_event("log", m)  # noqa: E731
+
+        def work() -> dict:
+            res = roommods.install_mods(inst.game_dir, inst.game_version, inst.loader, mods, log) if mods \
+                else {"installed": [], "failed": []}
+            upd = roommods.update_mods(inst.game_dir, changed, log) if changed else {"updated": [], "failed": []}
+            return {"instance": inst.id, "result": {**res, "updated": upd["updated"], "failed": res["failed"] + upd["failed"]}}
+
+        started = self._runner.run_task("Ставлю моды друга...", work, "room_mods_done")
         return {"ok": True} if started else {"error": "Дождитесь окончания текущей операции"}
 
     # ---------------------------------------------------------------- мир друга в «Сетевой игре» у гостя

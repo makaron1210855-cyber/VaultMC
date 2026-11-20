@@ -572,7 +572,7 @@ const P2P_TTL = 10 * MIN;
 // mods — моды хозяина, без которых гостя выкинет из мира (лаунчер гостя предложит поставить только их)
 const cleanRoomMods = (list) => (Array.isArray(list) ? list : []).slice(0, 40)
   .filter((m) => m && /^[a-z0-9_-]{1,64}$/.test(String(m.id || '')) && /^[0-9a-f]{40}$/.test(String(m.sha1 || '')))
-  .map((m) => ({ id: String(m.id), name: String(m.name || m.id).slice(0, 60), sha1: String(m.sha1), size: Math.max(0, Math.min(2147483647, Math.floor(Number(m.size) || 0))) }));
+  .map((m) => ({ id: String(m.id), name: String(m.name || m.id).slice(0, 60), ver: /^[0-9A-Za-z.+_-]{1,40}$/.test(String(m.ver || '')) ? String(m.ver) : '', sha1: String(m.sha1), size: Math.max(0, Math.min(2147483647, Math.floor(Number(m.size) || 0))) }));
 // комната на ретрансляторе VaultMC с ключом (лаунчер 6.4.14+): порт и ключ видят только друзья и те, у кого есть код
 // host — адрес ретранслятора, где открыта комната (лаунчер 7.0.35+); у старых комнат его нет, гость берёт запасной
 const cleanRelay = (r) => (r && Number.isInteger(r.port) && r.port > 0 && r.port < 65536 && /^[0-9a-f]{32}$/.test(String(r.token || ''))

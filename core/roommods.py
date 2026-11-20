@@ -158,12 +158,22 @@ def needed_mods(mods_dir: Path, loader: str, log=print) -> list[dict]:
                 with zipfile.ZipFile(jar) as z:
                     if not _jar_registers(z):
                         continue
-            out.append({"id": mod_id[:64], "name": _title(jar, None)[:60], "sha1": _sha1(jar), "size": jar.stat().st_size})
+            out.append({"id": mod_id[:64], "name": _title(jar, None)[:60], "ver": _clean_ver(info.version),
+                        "sha1": _sha1(jar), "size": jar.stat().st_size})
         except Exception as exc:  # noqa: BLE001 — один битый мод не должен ломать открытие комнаты
             log(f"[Комната] {jar.name}: не прочитался ({exc})")
     out = out[:MAX_MODS]
     _CACHE[str(mods_dir)] = (sig, out)
     return out
+
+
+_VER_RE = re.compile(r"[0-9A-Za-z.+_\-]{1,40}")
+
+
+def _clean_ver(value) -> str:
+    """Версия мода для показа: только безопасные знаки (она приходит и от других игроков)."""
+    text = str(value or "").strip()[:40]
+    return text if _VER_RE.fullmatch(text) else ""
 
 
 def clean_list(mods) -> list[dict]:
@@ -175,9 +185,20 @@ def clean_list(mods) -> list[dict]:
         mod_id, sha = str(m.get("id", "")).lower(), str(m.get("sha1", "")).lower()
         if re.fullmatch(r"[a-z0-9_\-]{1,64}", mod_id) and re.fullmatch(r"[0-9a-f]{40}", sha):
             size = m.get("size")
-            out.append({"id": mod_id, "name": str(m.get("name", "") or mod_id)[:60], "sha1": sha,
-                        "size": int(size) if isinstance(size, (int, float)) and 0 < size < 2 ** 31 else 0})
+            out.append({"id": mod_id, "name": str(m.get("name", "") or mod_id)[:60], "ver": _clean_ver(m.get("ver")),
+                        "sha1": sha, "size": int(size) if isinstance(size, (int, float)) and 0 < size < 2 ** 31 else 0})
     return out[:MAX_MODS]
+
+
+def _guest_mods(mods_dir: Path) -> dict[str, list[tuple[Path, str]]]:
+    """id мода → [(файл, версия)] для включённых модов сборки гостя."""
+    have: dict[str, list[tuple[Path, str]]] = {}
+    for jar in _enabled_jars(mods_dir):
+        info = read_mod(jar)
+        for i in info.ids:
+            if i:
+                have.setdefault(i.lower(), []).append((jar, info.version or ""))
+    return have
 
 
 def missing_mods(mods_dir: Path, mods) -> list[dict]:
@@ -185,10 +206,24 @@ def missing_mods(mods_dir: Path, mods) -> list[dict]:
     mods = clean_list(mods)
     if not mods:
         return []
-    have: set[str] = set()
-    for jar in _enabled_jars(mods_dir):
-        have.update(i.lower() for i in read_mod(jar).ids if i)
+    have = _guest_mods(mods_dir)
     return [m for m in mods if m["id"] not in have]
+
+
+def changed_mods(mods_dir: Path, mods) -> list[dict]:
+    """Моды, которые у гостя есть, но другой версии, чем у хозяина (файл не тот же по SHA-1).
+    Версии реестров у них могут не совпадать — отсюда выкидывание из мира. Запись: мод хозяина + `have_ver` и `have_file` гостя."""
+    mods = clean_list(mods)
+    if not mods:
+        return []
+    have = _guest_mods(mods_dir)
+    out = []
+    for m in mods:
+        mine = have.get(m["id"])
+        if not mine or any(_sha1(f) == m["sha1"] for f, _ in mine):
+            continue
+        out.append({**m, "have_ver": _clean_ver(mine[0][1]), "have_file": mine[0][0].name})
+    return out
 
 
 def install_mods(game_dir: Path, game_version: str, loader: str, mods, log=print) -> dict:
@@ -245,3 +280,43 @@ def install_mods(game_dir: Path, game_version: str, loader: str, mods, log=print
         except Exception as exc:  # noqa: BLE001
             log(f"[Комната] Fabric API не поставился: {exc}")
     return {"installed": installed, "failed": failed}
+
+
+def update_mods(game_dir: Path, mods, log=print) -> dict:
+    """Меняет у гостя моды другой версии на ту же версию, что у хозяина (те же файлы по SHA-1 с Modrinth).
+    Старый файл не удаляется, а уходит в папку отката модов — вернуть можно кнопкой «Откат» на вкладке модов.
+    Возвращает {"updated": [названия], "failed": [названия]}."""
+    from .modsources import MODRINTH_API
+    from .modupdates import apply
+    from .net import post_json
+
+    changed = changed_mods(game_dir / "mods", mods)     # имя своего файла берём из своей папки, не из присланного списка
+    if not changed:
+        return {"updated": [], "failed": []}
+    found = post_json(f"{MODRINTH_API}/version_files", {"hashes": [m["sha1"] for m in changed], "algorithm": "sha1"}) or {}
+    updates, failed = [], []
+    for m in changed:
+        version = found.get(m["sha1"])
+        file = None
+        if isinstance(version, dict):
+            file = next((f for f in version.get("files", []) if (f.get("hashes") or {}).get("sha1") == m["sha1"]), None)
+        name = str((file or {}).get("filename", ""))
+        project = str((version or {}).get("project_id", "")) if isinstance(version, dict) else ""
+        if not file or not project or not str(file.get("url", "")).startswith("https://cdn.modrinth.com/") \
+                or not re.fullmatch(r"[^\/:*?\"<>|]+\.jar", name):
+            failed.append(m["name"])
+            log(f"[Комната] {m['name']}: версии друга нет на Modrinth — попросите файл у него")
+            continue
+        updates.append({"file": m["have_file"], "new_file": name, "url": file["url"], "sha1": m["sha1"], "size": file.get("size"),
+                        "title": m["name"], "version": str(version.get("version_number", ""))[:40],
+                        "source": "modrinth", "project_id": project})
+    errors: list[str] = []
+    if updates:
+        _, errors = apply(game_dir, updates, log)
+    bad = {e.split(":", 1)[0] for e in errors}
+    updated = [u["title"] for u in updates if u["title"] not in bad]
+    failed += [u["title"] for u in updates if u["title"] in bad]
+    for u in updates:
+        if u["title"] not in bad:
+            log(f"[Комната] Мод {u['title']} обновлён до версии друга")
+    return {"updated": updated, "failed": failed}

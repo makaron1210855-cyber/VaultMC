@@ -1042,11 +1042,19 @@ class CloudEngine:
             return {**out, "status": "pending"}
         return {**out, "status": "ok"}
 
+    def _with_prev(self, badge: dict) -> dict:
+        """Добавляет к значку привязанного мира сведения о прошлой облачной версии (для кнопки «Прошлая версия», 10.0)."""
+        entry = self._entry(badge["nick"], badge["wid"])
+        prev = (entry or {}).get("prev")
+        if not prev or not (entry or {}).get("head"):
+            return badge
+        return {**badge, "prev": {"at": prev.get("at", 0), "size": prev.get("size", 0), "device_name": prev.get("device_name", "")}}
+
     def view(self, inst) -> dict:
         """Состояние облака для вкладки «Миры» (без сети: по последнему ответу list)."""
         bound = self.state.for_instance(inst.id)
         out = {"supported": self.supported(), "enabled": bool(self.cfg.world_sync), "device": self.state.device["name"],
-               "worlds": {b["folder"]: self._badge(inst, b) for b in bound}, "cloud_only": [], "usage": None,
+               "worlds": {b["folder"]: self._with_prev(self._badge(inst, b)) for b in bound}, "cloud_only": [], "usage": None,
                "limits": self.limits()}
         if not self.supported() or (not self.cfg.world_sync and not bound):
             return out

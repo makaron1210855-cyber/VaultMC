@@ -508,6 +508,18 @@ class EngineTests(TmpCase):
         pc.run(pc.engine.upload, pc.inst, b)
         return pc.binding(folder)
 
+    def test_view_shows_prev_version_of_bound_world(self):
+        """10.0: у привязанного мира видна прошлая облачная версия (кнопка «Прошлая версия»); нет её — поля нет."""
+        b = self.upload_first(self.pc1)
+        pc = self.pc1
+        pc.run(pc.engine.list_cloud, "Steve")
+        self.assertNotIn("prev", pc.engine.view(pc.inst)["worlds"]["World"])
+        entry = pc.engine._entry("Steve", b["wid"])
+        prev = {"rid": "r0", "at": 5, "size": 10, "device_name": "Старый ПК"}
+        with mock.patch.object(pc.engine, "_entry", return_value={**entry, "prev": prev}):
+            badge = pc.engine.view(pc.inst)["worlds"]["World"]
+        self.assertEqual(badge["prev"], {"at": 5, "size": 10, "device_name": "Старый ПК"})
+
     def test_upload_then_download_on_second_pc(self):
         b = self.upload_first(self.pc1)
         self.assertEqual(b["base_rev"], 1)

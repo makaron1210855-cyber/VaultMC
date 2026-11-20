@@ -1,0 +1,32 @@
+name: precheck
+
+# Предрелизная проверка на каждый push и pull request: компиляция Python, node --check, серверные тесты,
+# тесты Python (в них же проверка перевода I18N_EN). Та же команда, что владелец запускает перед выпуском.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  precheck:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Зависимости
+        run: python -m pip install -r requirements.txt
+      - name: Заглушка core/keys.py (настоящий файл не в репозитории)
+        shell: bash
+        run: |
+          cat > core/keys.py <<'EOF'
+          CURSEFORGE_API_KEY = ""
+          SKIN_SERVER = "https://vaultmc-skins.vaultmc.workers.dev"
+          EOF
+      - name: Предрелизная проверка
+        run: python tools/precheck.py

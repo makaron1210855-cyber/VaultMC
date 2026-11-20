@@ -164,7 +164,9 @@ function cloudRowHtml(b) {
   const [text, cls] = cloudBadgeText(b);
   if (b.status === 'off') return '';
   const reason = b.status === 'paused' ? `<div class="small faint">${esc(cloudPausedReason(b))}</div>` : '';
-  return `<div class="small"><span class="chip cloud-badge ${cls}">${esc(text)}</span> ${cloudActionHtml(b)}</div>${reason}`;
+  const canPrev = b.prev && ['ok', 'newer'].includes(b.status);
+  const prev = canPrev ? ` <button class="btn sm ghost" data-c="prevlocal" data-pn="${esc(b.nick)}" data-pw="${esc(b.wid)}" data-pat="${b.prev.at}" data-pdev="${esc(b.prev.device_name)}" data-psz="${b.prev.size}" title="Вернуть в облаке прошлую версию мира">${ic('refresh')} Прошлая версия</button>` : '';
+  return `<div class="small"><span class="chip cloud-badge ${cls}">${esc(text)}</span> ${cloudActionHtml(b)}${prev}</div>${reason}`;
 }
 
 function cloudOnlyHtml(list) {
@@ -202,6 +204,11 @@ async function cloudHandleClick(e, inst, body, rerender) {
     rerender();
   } else if (c === 'del' && cw) {
     if (await confirmDialog('Удалить мир из облака?', 'Мир в облаке будет удалён. На компьютерах он останется.', 'Удалить', true)) await run(api.cloud_delete(cw.dataset.cn, cw.dataset.cw), 'Удалено из облака');
+  } else if (c === 'prevlocal') {
+    const d = e.target.closest('[data-c]').dataset;
+    if (await confirmDialog('Вернуть прошлую версию мира?',
+      `Прошлая облачная версия: ${cloudDate(+d.pat)}, с ПК «${d.pdev}», ${CLOUD_SIZE(+d.psz)}. Она станет текущей в облаке, а мир на этом ПК при следующем запуске обновится до неё (старая папка уйдёт в корзину сборки на 7 дней). Прошлые версии хранятся в облаке 3 дня.`,
+      'Вернуть')) await run(api.cloud_restore_prev(d.pn, d.pw), 'Прошлая версия возвращена');
   } else if (c === 'prev' && cw) {
     if (await confirmDialog('Вернуть прошлую облачную версию?', 'Она станет новой текущей версией, остальные компьютеры получат её как обычное обновление.', 'Вернуть')) await run(api.cloud_restore_prev(cw.dataset.cn, cw.dataset.cw), 'Прошлая версия возвращена');
   } else if (c === 'abort' && cw) await run(api.cloud_abort_remote(cw.dataset.cn, cw.dataset.cw), 'Загрузка отменена');

@@ -165,6 +165,21 @@ test('список модов в комнате очищается: плохой
   assert.deepEqual(seen.data.info.mods.map((m) => m.id), ['sodium']);
 });
 
+test('версия мода в списке комнаты проходит, кривая отбрасывается (10.0)', async () => {
+  const e = env();
+  await reg(e, 'Host_1', TOKEN_A);
+  const open = await post(e, '/api/room', {
+    ...as('Host_1', TOKEN_A), action: 'open',
+    info: { mods: [
+      { id: 'sodium', name: 'Sodium', ver: '0.5.8+mc1.20.1', sha1: SHA, size: 100 },
+      { id: 'lithium', name: 'Lithium', ver: '<script>', sha1: SHA, size: 100 },
+      { id: 'old', name: 'Old', sha1: SHA, size: 100 },
+    ] },
+  });
+  const seen = await post(e, '/api/room', { ...as('Host_1', TOKEN_A), action: 'lookup', code: open.data.code });
+  assert.deepEqual(seen.data.info.mods.map((m) => m.ver), ['0.5.8+mc1.20.1', '', '']);
+});
+
 test('данные ретранслятора проходят в комнату и статус, кривые отбрасываются', async () => {
   const e = env();
   await reg(e, 'Host_1', TOKEN_A);
