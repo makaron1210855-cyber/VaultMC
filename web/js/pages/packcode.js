@@ -1,16 +1,25 @@
 /* Код сборки и ссылка на неё: «Экспорт → Код для друга» и «Сборки → По коду» (ссылка — site/pack.html). */
 
 /* ---------------------------------------------------------------- сборка по коду */
-async function shareInstanceCode(inst) {
+function shareInstanceCode(inst) {
+  const ask = openModal(`<h3>Код сборки «${esc(inst.name)}»</h3>
+    <p class="muted small">Код получит только тот, кому вы его отправите. Каталог на сайте открыт всем — включайте, только если хотите показать сборку всем.</p>
+    <label class="check"><input type="checkbox" id="scPublic"><span class="box">${iconSvg('check')}</span>Показать сборку в каталоге на сайте (30 дней)</label>
+    <div class="foot"><button class="btn ghost" data-close>Отмена</button><button class="btn primary" id="scGo">Получить код</button></div>`);
+  ask.querySelectorAll('[data-close]').forEach((b) => (b.onclick = ask.close));
+  $('#scGo', ask).onclick = () => { const pub = $('#scPublic', ask).checked; ask.close(); return shareInstanceCodeNow(inst, pub); };
+}
+
+async function shareInstanceCodeNow(inst, pub) {
   const m = openModal(`<h3>Код сборки «${esc(inst.name)}»</h3>
     <div class="share-wait muted small">${ic('refresh')} Собираю список модов и загружаю на сервер...</div>`);
-  const r = await safe(api.share_instance(inst.id));
+  const r = await safe(api.share_instance(inst.id, !!pub));
   if (!m.isConnected) return;
   if (!r || r.error) { m.close(); if (r?.error) toast(r.error, 'error', 6000); return; }
   const manual = r.manual || [];
   m.innerHTML = `<button class="btn ghost sm icon x" data-close>${ic('x')}</button>
     <h3>Код сборки «${esc(inst.name)}»</h3>
-    <p class="muted small">Друг открывает «Сборки → По коду» и вводит этот код. Лаунчер сам поставит ту же версию игры, загрузчик${r.mods ? `, моды (${r.mods} шт. с Modrinth)` : ""} и настройки. Код работает 30 дней.</p>
+    <p class="muted small">Друг открывает «Сборки → По коду» и вводит этот код. Лаунчер сам поставит ту же версию игры, загрузчик${r.mods ? `, моды (${r.mods} шт. с Modrinth)` : ""} и настройки. Код работает 30 дней.${r.public ? ' Сборка показана в каталоге на сайте.' : ''}</p>
     <div class="share-code mono">${esc(r.code)}</div>
     <p class="muted small">Или отправьте ссылку: друг откроет её, нажмёт «Открыть в VaultMC» — и лаунчер сам предложит поставить сборку. Если VaultMC у него ещё нет, на той же странице есть кнопка «Скачать».</p>
     ${manual.length ? `<p class="note">${ic('alert')} Эти файлы не с Modrinth, в код они не входят — передайте их другу отдельно: <b>${manual.slice(0, 10).map(esc).join(', ')}${manual.length > 10 ? ` (+${manual.length - 10})` : ""}</b></p>` : ''}

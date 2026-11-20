@@ -40,10 +40,9 @@ def explain(java_major: int, ram_gb: int, cores: int, total_ram: int, optimize: 
             lines.append(f"Сборщик мусора ZGC: паузы около миллисекунды, меньше микрофризов. Подходит: Java {java_major}, "
                          f"{ram_gb} ГБ для игры, {cores} потоков процессора.")
         flags += picked
-    if not compat and optimize and java_major >= 19:
-        flags += ["-XX:+AutoCreateSharedArchive", "-XX:SharedArchiveFile=<папка лаунчера>/cds/<версия>.jsa"]
-        lines.append("Кэш классов (AppCDS): после первого запуска игра грузится быстрее. При входе через Ely.by не включается — "
-                     "Java не может его записать вместе с authlib-injector.")
+    if not compat and optimize and java_major >= 12:
+        lines.append("Архив классов Java (CDS): лаунчер один раз создаёт его для своей Java (у Java от Mojang его нет) — "
+                     "Java запускается чуть быстрее. Флагов не добавляет.")
     if java_major >= 9 and not compat:
         flags.append("-Xlog:gc:file=logs/vaultmc-gc.log:time,uptime:filecount=2,filesize=2m")
         lines.append("Короткий журнал сборщика мусора (logs/vaultmc-gc.log, до 4 МБ): по нему кнопка «Почему тормозит» находит долгие паузы. "

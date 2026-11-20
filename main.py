@@ -225,6 +225,9 @@ def run_app() -> None:
         t = threading.Thread(target=api.presence_offline, daemon=True)   # друзья сразу видят «не в сети»
         t.start()
         t.join(2.5)   # не держим закрытие окна дольше пары секунд
+        s = threading.Thread(target=api._shutdown_server, daemon=True)   # свой сервер сохраняет мир и выключается
+        s.start()
+        s.join(20)    # дольше не ждём: процесс сервера закроется вместе с лаунчером (задание Windows)
 
     window.events.closing += remember_size
     shown = threading.Event()

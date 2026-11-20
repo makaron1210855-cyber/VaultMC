@@ -128,8 +128,10 @@ _registered: set[str] = set()
 _active: dict[str, str] = {}       # ник → ключ, которым работаем в этом запуске, если новый ключ сервер пока не принял
 
 
-def ensure_registered(name: str) -> str:
-    """Занимает ник на сервере (или подтверждает, что он наш). Возвращает ключ, которым дальше подписывать запросы."""
+def ensure_registered(name: str, prove: bool = True) -> str:
+    """Занимает ник на сервере (или подтверждает, что он наш). Возвращает ключ, которым дальше подписывать запросы.
+    prove=False — не доказывать ник аккаунтом Ely.by (облако миров для оффлайн-аккаунта: иначе фоновый запрос с 409
+    забрал бы ник аккаунтом Ely.by с тем же именем и увёл бы чужие облачные миры, раздел 4.2 дизайна)."""
     with _lock:
         key = name.lower()
         token = _token_for(name)
@@ -144,7 +146,7 @@ def ensure_registered(name: str) -> str:
         except SkinServerError as exc:
             if not exc.status:                 # нет связи — не делаем выводов, попробуем в следующий раз
                 raise
-            proof = ELY_PROVER(name) if ELY_PROVER else ""
+            proof = ELY_PROVER(name) if ELY_PROVER and prove else ""
             proven = False
             if proof:
                 try:
@@ -169,9 +171,9 @@ def ensure_registered(name: str) -> str:
         return token
 
 
-def _authed(name: str, path: str, payload: dict) -> dict:
+def _authed(name: str, path: str, payload: dict, prove: bool = True) -> dict:
     """Запрос от имени ника. Если сервер не узнал ключ (ник подтвердили с другого ПК) — регистрируемся заново и повторяем."""
-    token = ensure_registered(name)
+    token = ensure_registered(name, prove)
     try:
         return _call(path, {"name": name, "token": token, **payload})
     except SkinServerError as exc:
@@ -182,7 +184,7 @@ def _authed(name: str, path: str, payload: dict) -> dict:
         with _lock:
             _registered.discard(name.lower())
             _active.pop(name.lower(), None)
-        token = ensure_registered(name)
+        token = ensure_registered(name, prove)
         return _call(path, {"name": name, "token": token, **payload})
 
 
@@ -265,8 +267,11 @@ def set_presence(name: str, state: dict | None) -> None:
     _authed(name, "/api/presence", {"status": state})
 
 
-def share_pack(name: str, pack: dict) -> str:
-    return _authed(name, "/api/share", {"pack": pack}).get("code", "")
+def share_pack(name: str, pack: dict, public: bool = False) -> str:
+    body: dict = {"pack": pack}
+    if public:
+        body["public"] = True
+    return _authed(name, "/api/share", body).get("code", "")
 
 
 def get_pack(code: str) -> dict:
@@ -319,6 +324,18 @@ def turn_servers(name: str) -> list:
         return _authed(name, "/api/turn", {}).get("iceServers") or []
     except Exception:  # noqa: BLE001
         return []
+
+
+def worlds_status() -> dict | None:
+    """Сервер умеет облако миров: {v, max_world, part_size}. None — нет (старый сервер, нет R2, нет связи)."""
+    url = server_url()
+    if not url:
+        return None
+    try:
+        info = get_json(f"{url}/api/status", timeout=6, attempts=1).get("worlds")
+    except Exception:  # noqa: BLE001
+        return None
+    return info if isinstance(info, dict) and info.get("v") == 1 else None
 
 
 def status() -> bool:

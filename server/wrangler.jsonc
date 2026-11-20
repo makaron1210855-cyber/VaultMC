@@ -11,6 +11,10 @@
   "durable_objects": {
     "bindings": [{ "name": "SOCIAL", "class_name": "Social" }]
   },
+  // Облако миров (server/worlds.js): бакет R2 vaultmc-worlds, закрытый. Включить: R2 в панели Cloudflare →
+  // npx wrangler r2 bucket create vaultmc-worlds → раскомментировать строку ниже → npx wrangler deploy.
+  // Без этой привязки облако отвечает 503 disabled, остальной сервер работает как раньше.
+  // "r2_buckets": [{ "binding": "WORLDS", "bucket_name": "vaultmc-worlds" }],
   "exports": {
     "Social": { "type": "durable-object", "storage": "sqlite" }
   },

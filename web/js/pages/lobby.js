@@ -28,7 +28,7 @@ registerPage('lobby', {
         <section class="quick">${QUICK.map((q) => `<button class="quick-card plate" data-act="${q.act}">
             <span class="qi">${ic(q.icon)}</span><span><b>${q.title}</b><small>${q.text}</small></span></button>`).join('')}</section>
         <section class="shelf">
-          <div class="shelf-head"><b>Мои сборки</b><button class="link-btn" data-act="instances">Все сборки ${ic('chevronRight')}</button></div>
+          <div class="shelf-head"><b>Мои сборки</b><span class="row" style="gap:14px"><button class="link-btn" data-act="gallery">${ic('image')} Скриншоты</button><button class="link-btn" data-act="stats">${ic('clock')} Время в игре</button><button class="link-btn" data-act="instances">Все сборки ${ic('chevronRight')}</button></span></div>
           <div class="shelf-row" id="shelfRow"></div>
         </section>
       </div>`;
@@ -45,6 +45,8 @@ registerPage('lobby', {
       if (act === 'rooms') go('rooms');
       if (act === 'catalog') go('catalog');
       if (act === 'instances') go('instances');
+      if (act === 'gallery') openGallery();
+      if (act === 'stats') openPlayStats();
       if (act === 'optimize') S.selected ? go('instance', { id: S.selected.id, tab: 'optimize' }) : openNewInstance();
       if (act === 'switch') openInstancePicker();
       if (act === 'picture' && S.selected) instancePictureMenu(e.target.closest('[data-act]'), S.selected);
@@ -93,6 +95,7 @@ registerPage('lobby', {
         <div class="hero-meta">
           <span>${esc(inst.loaderLabel)}</span><span>${esc(inst.game_version)}</span>
           <span>${inst.modsCount} ${plural(inst.modsCount, 'мод', 'мода', 'модов')}</span><span title="Наиграно в этой сборке">${ic('clock')} ${esc(inst.playTime)}</span>
+          <span title="Когда запускали в последний раз">${inst.last_played ? `играл ${fmtWhen(inst.last_played)}` : 'ещё не запускали'}</span>
         </div>
         <div class="big-play" id="bigPlay"></div>`;
       drawInstanceIcon($('.hero-title canvas', info), inst.name, inst.color, inst.icon);

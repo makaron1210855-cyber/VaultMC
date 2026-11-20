@@ -27,6 +27,7 @@ from .config import LauncherConfig
 from .forge import parse_loader_id
 from .installer import Installer
 from .java_runtime import ensure_runtime
+from .cds import ensure_base_cds
 from .net import Cancelled
 from .rules import rules_allow
 from .friends import find_tunnel_address
@@ -310,19 +311,23 @@ class GameRunner:
                          java=self._java_for_install)
 
     def _apply_cds(self, plan, target) -> None:
-        """Java 19+: общий архив загруженных классов (AppCDS). Первый запуск его создаёт, следующие грузят классы быстрее —
-        на сборках с большим числом модов это заметная часть времени до главного меню."""
+        """Базовый архив классов Java (CDS). В Java от Mojang его нет (нет bin/server/classes.jsa) — Java грузила все
+        классы с нуля. Лаунчер один раз создаёт архив сам (~0,5 с): Fabric 1.21.1 с 70 модами — 17,0 с вместо 17,3–18,1.
+        Свой архив сборки (-XX:+AutoCreateSharedArchive) больше не включаем: запуск, во время которого он пишется,
+        шёл 187 с вместо 18 (замер 19.11.2026, Java 21, и с G1, и с ZGC), а выигрыш потом — около 2 с."""
         java_major = getattr(self, "_java_major", 0) or plan.java_major
-        if java_major < 19 or not self.config.optimize_jvm or target.compat or "-Xshare:off" in plan.command:
+        if java_major < 12 or not self.config.optimize_jvm or target.compat:
             return
-        # с Java-агентом (authlib-injector для Ely.by) Java не может записать архив: игра падает при выходе.
-        # Поэтому при любом -javaagent архив не включаем
-        if any(arg.startswith("-javaagent:") for arg in plan.command):
-            return
-        cds_dir = self.repo.game_dir / "cds"
-        cds_dir.mkdir(parents=True, exist_ok=True)
-        archive = cds_dir / f"{target.version_id}.jsa"
-        plan.command[1:1] = ["-XX:+AutoCreateSharedArchive", f"-XX:SharedArchiveFile={archive}"]
+        ensure_base_cds(Path(plan.command[0]), self.repo.game_dir / "runtime", self._log)
+        old_cds = self.repo.game_dir / "cds"        # архивы сборок до 8.0.4 (до 170 МБ на версию) больше не нужны
+        if old_cds.is_dir():
+            def unlock(func, path, _exc):          # Java делает .jsa «только для чтения» — без этого rmtree их пропускает
+                try:
+                    os.chmod(path, 0o666)
+                    func(path)
+                except OSError:
+                    pass
+            shutil.rmtree(old_cds, onexc=unlock)
 
     GC_LOG = "logs/vaultmc-gc.log"   # относительный путь: игра запускается из папки сборки (cwd), двоеточия диска не мешают
 

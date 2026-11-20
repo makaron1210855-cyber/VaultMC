@@ -17,7 +17,8 @@
  *   POST /api/p2p        {name, token, action, host, id, sdp, code} — offer | inbox | answer | poll: прямое соединение (WebRTC)
  *   POST /api/room       {name, token, action, code, info}  — open | update | close: комната по коду (дружить не нужно)
  *   GET  /api/room/<код>                                     — к кому и в какую версию заходить по коду
- *   GET  /api/status                                         — проверка, что сервер работает
+ *   GET  /api/status                                         — проверка, что сервер работает (+ worlds: есть ли облако)
+ *   POST /api/worlds, PUT /api/worlds/part, POST /api/worlds/file — облако миров (server/worlds.js, версия 7)
  *
  * Версия 6: где что хранится.
  *   KV (SKINS)          — ники и их ключи, скины и плащи, сборки по коду. Пишутся редко, читаются часто (игрой).
@@ -36,6 +37,8 @@
  * поиск комнат. Счётчики живут в памяти Durable Object — на запись в хранилище они не тратятся.
  */
 
+import { W, WORLD_SCHEMA, worldMethods, worldPartRoute, worldFileStream, disabled as worldsDisabled } from './worlds.js';
+
 const NAME_RE = /^[A-Za-z0-9_]{3,16}$/;
 const MAX_PNG = 256 * 1024;
 const CODE_RE = /^[A-Z0-9]{6}$/;
@@ -45,9 +48,9 @@ const MIN = 60 * 1000;
 const ROUTES = {
   '/api/upload': 'upload', '/api/remove': 'remove', '/api/share': 'share', '/api/turn': 'turn',
   '/api/friends': 'friends', '/api/presence': 'presence', '/api/p2p': 'p2p', '/api/room': 'room',
-  '/api/recovery': 'recovery', '/api/rename': 'rename',
+  '/api/recovery': 'recovery', '/api/rename': 'rename', '/api/worlds': 'worlds', '/api/worlds/file': 'worldsFile',
 };
-const SOCIAL_ROUTES = new Set(['friends', 'presence', 'p2p', 'room']);
+const SOCIAL_ROUTES = new Set(['friends', 'presence', 'p2p', 'room', 'worlds']);
 
 export default {
   async fetch(request, env) {
@@ -65,13 +68,18 @@ export default {
         if (ct) return cslTexture(env, ct[1], ct[2] === 's' ? 'skin' : 'cape', ct[3]);
         if (path === '/api/stats') return statsRead(env, request);
         if (path.startsWith('/api/cf/')) return cfProxy(env, request, url, path.slice('/api/cf/'.length), ip);
-        if (path === '/api/status' || path === '/') return json({ ok: true, service: 'VaultMC skins', version: 6 });
+        if (path === '/api/status' || path === '/') {
+          return json({ ok: true, service: 'VaultMC skins', version: 7,
+            worlds: env.WORLDS ? { v: 1, max_world: W.MAX_WORLD, part_size: W.PART } : null });
+        }
+        if (path === '/api/catalog') return catalogList(env);
         const sh = path.match(/^\/api\/share\/([A-Z0-9]{6})$/);
         if (sh) return url.searchParams.has('brief') ? shareBrief(env, sh[1]) : getShare(env, sh[1]);
         const rm = path.match(/^\/api\/room\/([A-Za-z0-9]{6})$/);
         if (rm) return social(env, { op: 'getRoom', ip, code: rm[1].toUpperCase() });
         return new Response('Not found', { status: 404 });
       }
+      if (request.method === 'PUT' && path === '/api/worlds/part') return worldPartRoute(env, request, ip, social);
       if (request.method !== 'POST') return json({ error: 'Метод не поддерживается' }, 405);
       if (path.startsWith('/api/cf/')) return cfProxy(env, request, url, path.slice('/api/cf/'.length), ip);
       const body = await request.json().catch(() => null);
@@ -80,15 +88,17 @@ export default {
       if (path === '/api/register') return register(env, body, () => gate(env, ip), ip);
       const route = ROUTES[path];
       if (!route) return json({ error: 'Неизвестный адрес' }, 404);
+      if ((route === 'worlds' || route === 'worldsFile') && !env.WORLDS) return worldsDisabled();
       const who = await auth(env, body);
       // Один запрос в Durable Object: он проверяет лимиты (в том числе блокировку после неверных паролей)
       // и сразу выполняет социальное действие. Для действий с KV он только разрешает или запрещает.
       const res = await social(env, {
         op: 'call', route, ip, nick: String(body.name || ''), who: who.name || '',
         authError: who.error ? { error: who.error, code: who.code } : null, fail: !!who.mismatch,
-        body: SOCIAL_ROUTES.has(route) ? body : null,
+        body: SOCIAL_ROUTES.has(route) || route === 'worldsFile' ? body : null, owner: who.owner || '',
       });
       if (SOCIAL_ROUTES.has(route) || res.status !== 200) return res;
+      if (route === 'worldsFile') return worldFileStream(env, await res.json(), body);
       if (route === 'upload') return upload(env, who.name, body);
       if (route === 'remove') return remove(env, who.name, body);
       if (route === 'share') return putShare(env, who.name, body);
@@ -182,7 +192,26 @@ async function auth(env, body) {
   const user = await getUser(env, name);
   if (!user) return { error: 'Ник не зарегистрирован на сервере VaultMC', code: 'auth' };
   if (!userHashes(user).includes(await sha256(token))) return { error: TAKEN(name), code: 'auth', mismatch: true };
-  return { name: user.name };
+  return { name: user.name, owner: await ownerOf(user) };
+}
+
+/* Владелец облачных миров (docs/world-sync-design.md, раздел 4). Миры привязаны к нему, а не к нику:
+ *   оффлайн — поле owner, а у старых записей — вычисленное из ника и времени создания (захват ника меняет created);
+ *   Ely.by — UUID аккаунта Ely.by; у старой записи без elyId владельца нет (облако просит подтвердить Ely.by). */
+async function ownerOf(user) {
+  if (user.ely) return user.elyId ? 'e:' + user.elyId : null;
+  if (typeof user.owner === 'string' && /^o:[0-9a-f]{32}$/.test(user.owner)) return user.owner;
+  return 'o:' + (await sha256('vmc-owner:' + key(user.name) + ':' + user.created)).slice(0, 32);
+}
+// поля владельца для записи user: — их обязана сохранять каждая перезапись
+async function ownerFields(user) {
+  const owner = await ownerOf(user);
+  return { ...(owner && owner.startsWith('o:') ? { owner } : {}), ...(user.elyId ? { elyId: user.elyId } : {}) };
+}
+// Прежний оффлайн-владелец потерял ник: его облачные миры — к удалению через 7 дней. Не прошло — уберёт очистка.
+async function orphanWorlds(env, prev) {
+  if (!prev || !prev.startsWith('o:')) return;
+  try { await social(env, { op: 'worldsOrphan', owner: prev }); } catch (err) { console.error('worlds orphan', err); }
 }
 
 // У ника может быть несколько ключей (до 5): один игрок на нескольких компьютерах.
@@ -245,15 +274,18 @@ async function cslTexture(env, hash, kind, name) {
   return new Response(fromBase64(data.png), { headers: { 'content-type': 'image/png', 'cache-control': cache } });
 }
 
-/* Доказательство владения ником Ely.by: лаунчер сделал session/join с этим serverId */
+/* Доказательство владения ником Ely.by: лаунчер сделал session/join с этим serverId.
+ * Ответ — null или {id}: id — UUID аккаунта Ely.by (32 hex) или '' если Ely.by его не прислал. */
 async function elybyProven(name, serverId) {
-  if (!serverId || !/^[A-Za-z0-9_-]{8,64}$/.test(String(serverId))) return false;
+  if (!serverId || !/^[A-Za-z0-9_-]{8,64}$/.test(String(serverId))) return null;
   try {
     const r = await fetch(`https://authserver.ely.by/session/hasJoined?username=${encodeURIComponent(name)}&serverId=${encodeURIComponent(serverId)}`);
-    if (r.status !== 200) return false;
+    if (r.status !== 200) return null;
     const p = await r.json().catch(() => null);
-    return !!p && String(p.name || '').toLowerCase() === name.toLowerCase();
-  } catch { return false; }
+    if (!p || String(p.name || '').toLowerCase() !== name.toLowerCase()) return null;
+    const id = String(p.id || '').replace(/-/g, '').toLowerCase();
+    return { id: /^[0-9a-f]{32}$/.test(id) ? id : '' };
+  } catch { return null; }
 }
 
 /* ---------------------------------------------------------------- код восстановления и смена ника */
@@ -269,7 +301,7 @@ async function setRecovery(env, name, body) {
   const user = await getUser(env, name);
   if (!user) return json({ error: 'Ник не зарегистрирован на сервере VaultMC', code: 'auth' }, 403);
   if (user.ely) return json({ error: 'У аккаунта Ely.by пароль восстанавливается на сайте Ely.by' }, 400);
-  await env.SKINS.put('user:' + key(name), JSON.stringify({ ...user, recovery: await recoveryHash(code) }));
+  await env.SKINS.put('user:' + key(name), JSON.stringify({ ...user, ...(await ownerFields(user)), recovery: await recoveryHash(code) }));
   return json({ ok: true });
 }
 
@@ -279,7 +311,8 @@ async function recoverNick(env, existing, name, hash, body, ip) {
   const ok = !!existing.recovery && RECOVERY_RE.test(code) && (await recoveryHash(code)) === existing.recovery;
   const res = await social(env, { op: 'recovery', ip, nick: name, ok });   // блокировка подбора — как у пароля
   if (res.status !== 200) return res;
-  await env.SKINS.put('user:' + key(name), JSON.stringify({ name: existing.name, hash, hashes: [hash], ely: false, created: existing.created }));
+  await env.SKINS.put('user:' + key(name), JSON.stringify({ name: existing.name, hash, hashes: [hash], ely: false, created: existing.created,
+    ...(await ownerFields(existing)) }));
   return json({ ok: true, recovered: true });
 }
 
@@ -305,8 +338,9 @@ async function renameNick(env, name, body) {
     }
   }
   const hash = await sha256(token);
+  // владелец облачных миров — тот же (новый ник дал бы по формуле другого, поэтому поле обязательно)
   await env.SKINS.put('user:' + key(to), JSON.stringify({ name: to, hash, hashes: [hash], ely: false, created: user.created,
-    ...(user.recovery ? { recovery: user.recovery } : {}) }));
+    ...(await ownerFields(user)), ...(user.recovery ? { recovery: user.recovery } : {}) }));
   if (!same) {
     await env.SKINS.delete('user:' + key(name));
     await Promise.all(['skin', 'cape'].map((k) => env.SKINS.delete(k + ':' + key(name))));
@@ -324,7 +358,10 @@ async function register(env, body, allow, ip = '') {
   const existing = await getUser(env, name);
   const hash = await sha256(token);
   const hashes = existing ? userHashes(existing) : [];
-  if (hashes.includes(hash)) return json({ ok: true, already: true, ely: !!existing.ely });
+  // bind — привязка UUID Ely.by к старой записи (облако миров просит её кодом ely_bind). Проверяется до «ключ уже
+  // есть», иначе подтверждение не дошло бы до записи.
+  const bind = !!(existing && existing.ely && !existing.elyId && body.ely && body.bind);
+  if (hashes.includes(hash) && !bind) return json({ ok: true, already: true, ely: !!existing.ely });
   // подбор кода закрывает та же блокировка, что и подбор пароля (20 неверных за 10 минут с адреса)
   if (existing && body.recovery !== undefined) return recoverNick(env, existing, name, hash, body, ip);
   // Свободный ник занимает первый, кто пришёл — даже если такой ник есть на Ely.by (раньше оффлайн-игрока
@@ -334,23 +371,40 @@ async function register(env, body, allow, ip = '') {
     //  old — у лаунчера есть прежний ключ этого ника (обновление ключа на «ключ из пароля», тот же игрок);
     //  ely — игрок доказал, что это его аккаунт Ely.by. Если ник до этого держал оффлайн-игрок — он его теряет.
     const oldOk = body.old && String(body.old).length >= 32 && hashes.includes(await sha256(String(body.old)));
-    const proven = !oldOk && body.ely ? await elybyProven(name, body.ely) : false;
-    if (!oldOk && !proven) return json({ error: TAKEN(existing.name), code: 'taken' }, 409);
+    const proof = !oldOk && body.ely ? await elybyProven(name, body.ely) : null;
+    if (!oldOk && !proof) return json({ error: TAKEN(existing.name), code: 'taken' }, 409);
     const denied = await allow();
     if (denied) return denied;
-    // replace — игрок сменил пароль: прежние ключи (в том числе старый пароль) больше не действуют
-    const keep = oldOk && body.replace ? [] : oldOk || existing.ely ? hashes : [];
-    const ely = proven || !!existing.ely;
-    // код восстановления остаётся, только если это тот же игрок (знает прежний ключ), а не новый владелец ника
-    const recovery = oldOk && existing.recovery ? { recovery: existing.recovery } : {};
-    await env.SKINS.put('user:' + key(name), JSON.stringify({ name: existing.name, hash, hashes: [...keep, hash].slice(-5), ely, created: existing.created, ...recovery }));
-    return json({ ok: true, ely });
+    const prevOwner = await ownerOf(existing);
+    let rec;
+    if (oldOk) {
+      // тот же игрок; replace — сменил пароль: прежние ключи (в том числе старый пароль) больше не действуют.
+      // Код восстановления остаётся только у того же игрока, а не у нового владельца ника.
+      const keep = body.replace ? [] : hashes;
+      rec = { name: existing.name, hash, hashes: [...keep, hash].slice(-5), ely: !!existing.ely, created: existing.created,
+        ...(await ownerFields(existing)), ...(existing.recovery ? { recovery: existing.recovery } : {}) };
+    } else if (existing.ely && (existing.elyId ? proof.id === existing.elyId : !proof.id)) {
+      // тот же аккаунт Ely.by (другой ПК того же игрока) — ключ добавляется. Ely.by не прислал UUID, а у записи
+      // его и не было — как раньше; облако у такой записи не работает.
+      rec = { name: existing.name, hash, hashes: [...hashes, hash].slice(-5), ely: true, created: existing.created,
+        ...(existing.elyId ? { elyId: existing.elyId } : {}) };
+    } else {
+      // Ник забирают: оффлайн-ник — владелец Ely.by; имя на Ely.by сменило хозяина (другой UUID); старая запись
+      // Ely.by без UUID — в ней могут лежать ключи и прежнего хозяина имени. Остаётся один ключ, владелец новый.
+      rec = { name: existing.name, hash, hashes: [hash], ely: true, created: Date.now(), ...(proof.id ? { elyId: proof.id } : {}) };
+    }
+    await env.SKINS.put('user:' + key(name), JSON.stringify(rec));
+    const nowOwner = await ownerOf(rec);
+    if (prevOwner && prevOwner !== nowOwner) await orphanWorlds(env, prevOwner);
+    return json({ ok: true, ely: rec.ely, cloud: !!nowOwner });
   }
   const denied = await allow();
   if (denied) return denied;
-  const proven = body.ely ? await elybyProven(name, body.ely) : false;
-  await env.SKINS.put('user:' + key(name), JSON.stringify({ name, hash, hashes: [hash], ely: proven, created: Date.now() }));
-  return json({ ok: true, ely: proven });
+  const proof = body.ely ? await elybyProven(name, body.ely) : null;
+  const rec = { name, hash, hashes: [hash], ely: !!proof, created: Date.now(), ...(proof && proof.id ? { elyId: proof.id } : {}) };
+  if (!rec.ely) rec.owner = await ownerOf(rec);   // по той же формуле, что у старых записей (раздел 4.2)
+  await env.SKINS.put('user:' + key(name), JSON.stringify(rec));
+  return json({ ok: true, ely: rec.ely, cloud: !!(await ownerOf(rec)) });
 }
 
 async function upload(env, name, body) {
@@ -382,8 +436,11 @@ async function putShare(env, name, body) {
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = newCode();
     if (await env.SKINS.get('share:' + code)) continue;
-    await env.SKINS.put('share:' + code, JSON.stringify({ by: name, at: Date.now(), pack: body.pack }), { expirationTtl: 30 * 86400 });
-    return json({ ok: true, code, days: 30 });
+    const data = { by: name, at: Date.now(), pack: body.pack };
+    await env.SKINS.put('share:' + code, JSON.stringify(data), { expirationTtl: 30 * 86400 });
+    // В каталог на сайте — только по явному согласию (public: true); одна запись индекса на код
+    if (body.public === true) await catalogAdd(env, { code, ...briefOf(data) });
+    return json({ ok: true, code, days: 30, public: body.public === true });
   }
   return json({ error: 'Не получилось придумать код, попробуйте ещё раз' }, 500);
 }
@@ -400,13 +457,38 @@ async function shareBrief(env, code) {
   const data = await env.SKINS.get('share:' + code, 'json');
   const cors = (res) => { res.headers.set('access-control-allow-origin', '*'); return res; };
   if (!data || !data.pack) return cors(json({ error: 'Код не найден или устарел (коды живут 30 дней)' }, 404));
-  const p = data.pack;
+  return cors(json({ ok: true, ...briefOf(data) }));
+}
+
+function briefOf(data) {
+  const p = data.pack || {};
   const files = Array.isArray(p.index && p.index.files) ? p.index.files : [];
-  return cors(json({
-    ok: true, name: String(p.name || '').slice(0, 80), loader: String(p.loader || '').slice(0, 20),
+  return {
+    name: String(p.name || '').slice(0, 80), loader: String(p.loader || '').slice(0, 20),
     game_version: String(p.game_version || '').slice(0, 30), by: String(data.by || '').slice(0, 16),
     mods: files.filter((f) => /^mods\//.test(String(f.path || ''))).length, at: data.at || 0,
-  }));
+  };
+}
+
+/* Каталог сборок на сайте (site/catalog.html): один ключ KV `catalog` — до 60 свежих записей, коды живут 30 дней.
+ * Гонка двух одновременных записей может потерять одну запись каталога — сам код при этом остаётся рабочим. */
+const CATALOG_MAX = 60, CATALOG_TTL = 30 * 86400 * 1000;
+
+async function catalogAdd(env, entry) {
+  const now = Date.now();
+  const old = (await env.SKINS.get('catalog', 'json')) || [];
+  const keep = (Array.isArray(old) ? old : []).filter((e) => e && e.code !== entry.code && now - (e.at || 0) < CATALOG_TTL);
+  await env.SKINS.put('catalog', JSON.stringify([entry, ...keep].slice(0, CATALOG_MAX)));
+}
+
+async function catalogList(env) {
+  const now = Date.now();
+  const list = (await env.SKINS.get('catalog', 'json')) || [];
+  const items = (Array.isArray(list) ? list : []).filter((e) => e && CODE_RE.test(String(e.code)) && now - (e.at || 0) < CATALOG_TTL);
+  const res = json({ ok: true, items });
+  res.headers.set('access-control-allow-origin', '*');
+  res.headers.set('cache-control', 'public, max-age=60');
+  return res;
 }
 
 /* ---------------------------------------------------------------- ретранслятор TURN (Cloudflare) */
@@ -487,9 +569,16 @@ export class Social {
   constructor(state, env) {
     this.env = env;
     this.sql = state.storage.sql;
+    this.storage = state.storage;
     this.counters = new Map();   // лимиты: живут в памяти, при выгрузке объекта сбрасываются (это допустимо)
+    this.committing = new Set(); // облако миров: какие commit сейчас ждут R2 (остальные committing — от прошлого запуска)
     this.cleanedAt = 0;
-    for (const q of SCHEMA) this.sql.exec(q);
+    for (const q of [...SCHEMA, ...WORLD_SCHEMA]) this.sql.exec(q);
+  }
+
+  // будильник объекта — уборка облака миров (server/worlds.js)
+  async alarm() {
+    try { await this.worldsAlarm(); } catch (err) { console.error('alarm', err); }
   }
 
   // Один анонимный отчёт: только тип проблемы и версии — ни ника, ни путей, ни адреса (адрес нужен лишь для лимита в памяти).
@@ -535,6 +624,7 @@ export class Social {
     this.sql.exec('DELETE FROM rooms WHERE exp <= ?', now);
     this.sql.exec('DELETE FROM offers WHERE at <= ?', now - P2P_TTL);
     this.sql.exec('DELETE FROM answers WHERE exp <= ?', now);
+    this.sql.exec('DELETE FROM w_count WHERE until <= ?', now);
     for (const [k, c] of this.counters) if (now - c.start >= c.win) this.counters.delete(k);
   }
 
@@ -550,26 +640,30 @@ export class Social {
       return this.getRoom(String(m.code || ''));
     }
     if (m.op === 'stat') return this.stat(ip, m.body);
-    if (m.op === 'statsList') return json({ rows: this.rows('SELECT day, kind, app, mc, loader, n FROM crashstats ORDER BY day DESC, n DESC LIMIT 500') });
+    if (m.op === 'statsList') return json({ rows: this.rows('SELECT day, kind, app, mc, loader, n FROM crashstats ORDER BY day DESC, n DESC LIMIT 500'), worlds: this.worldsStats() });
+    if (m.op === 'worldPart') return this.env.WORLDS ? this.worldPart(m) : worldsDisabled();
+    if (m.op === 'worldsOrphan') return this.worldsOrphan(String(m.owner || ''));
     if (m.op === 'renameSocial') return this.renameSocial(String(m.from || ''), String(m.to || ''));
     if (!['call', 'recovery'].includes(m.op)) return json({ error: 'Неизвестный запрос' }, 400);
 
     // Блокировка после неверных паролей действует на все запросы этого ника с этого адреса — даже с верным
     // паролем, иначе подбор просто продолжался бы. Общий предел на ник выше, чтобы чужой не мог легко
     // заблокировать игрока со своего адреса. Неверный код восстановления считается так же.
+    // Счётчики — в SQLite (w_count): в памяти они обнулялись бы, когда объект засыпает через 10 с без запросов,
+    // и медленный подбор пароля в тихие часы ничем не ограничивался бы. Пишутся только при неверном пароле.
     const nk = key(String(m.nick || ''));
     const failIp = 'fail:' + nk + ':' + ip, failNick = 'fail:' + nk;
-    if (this.reached(failIp, LIMITS.failIp) || this.reached(failNick, LIMITS.failNick)) {
+    if (this.wCount(failIp) >= LIMITS.failIp[0] || this.wCount(failNick) >= LIMITS.failNick[0]) {
       return tooMany('Слишком много попыток входа с неверным паролем. Подождите 10 минут');
     }
+    const failed = () => { this.wBump(failIp, LIMITS.failIp[1]); this.wBump(failNick, LIMITS.failNick[1]); };
     if (m.op === 'recovery') {
       if (m.ok) return json({ allow: true });
-      this.hit(failIp, LIMITS.failIp);
-      this.hit(failNick, LIMITS.failNick);
+      failed();
       return json({ error: 'Неверный код восстановления — проверьте, что ник и код набраны без ошибок', code: 'recovery' }, 403);
     }
     if (m.authError) {
-      if (m.fail) { this.hit(failIp, LIMITS.failIp); this.hit(failNick, LIMITS.failNick); }
+      if (m.fail) failed();
       return json(m.authError, 403);
     }
     const name = String(m.who || '');
@@ -584,6 +678,12 @@ export class Social {
     if (m.route === 'presence') return this.presence(name, body);
     if (m.route === 'p2p') return this.p2p(name, body);
     if (m.route === 'room') return this.room(name, body, ip);
+    if (m.route === 'worlds' || m.route === 'worldsFile') {
+      if (!this.env.WORLDS) return worldsDisabled();
+      // старая запись Ely.by без UUID: лаунчер подтверждает Ely.by заново (register с ely и bind) и повторяет
+      if (!m.owner) return json({ error: 'Подтвердите аккаунт Ely.by для облака миров', code: 'ely_bind' }, 403);
+      return m.route === 'worlds' ? this.worldsCall(String(m.owner), name, body, ip) : this.worldFile(String(m.owner), body);
+    }
     return json({ error: 'Неизвестный адрес' }, 404);
   }
 
@@ -865,3 +965,5 @@ export class Social {
     return json({ error: 'Неизвестное действие' }, 400);
   }
 }
+
+Object.assign(Social.prototype, worldMethods);

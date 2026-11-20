@@ -1,10 +1,13 @@
 """Миры: автокопии после игры, корзина удалённых миров."""
 import os
+import shutil
 import sys
 import tempfile
 import time
 import unittest
+import zipfile
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -33,6 +36,63 @@ class WorldTests(unittest.TestCase):
         t = time.time() + ahead
         os.utime(p, (t, t))
 
+    def add_dh_cache(self, name, size=5000):
+        """Кэш мода Distant Horizons, как в настоящем мире: data/DistantHorizons.sqlite (+ -wal, -shm)."""
+        data = self.game / "saves" / name / "data"
+        data.mkdir(exist_ok=True)
+        for suffix in ("", "-wal", "-shm"):
+            (data / f"DistantHorizons.sqlite{suffix}").write_bytes(b"D" * size)
+        (data / "raids.dat").write_bytes(b"RAIDS")
+
+    def test_backup_skips_distant_horizons_cache(self):
+        # раньше кэш (у игроков 8–26 ГБ) целиком попадал в копию мира
+        self.add_dh_cache("Alpha")
+        (self.game / "saves" / "Alpha" / "session.lock").write_bytes(b"\xe2\x98\x83")
+        path = W.backup_world(self.game, "Alpha", self.backups)
+        with zipfile.ZipFile(path) as zf:
+            names = set(zf.namelist())
+        self.assertIn("Alpha/data/raids.dat", names, "остальные файлы data/ — часть мира, они в копии")
+        self.assertIn("Alpha/region/r.0.0.mca", names)
+        self.assertEqual([n for n in names if "DistantHorizons" in n], [], "кэш Distant Horizons в копию не попадает")
+        self.assertNotIn("Alpha/session.lock", names)
+
+    def test_auto_backup_not_blocked_by_cache(self):
+        # раньше мир с кэшем Distant Horizons считался «больше 2 ГБ», и автокопия не делалась вовсе
+        self.add_dh_cache("Alpha", size=4000)            # кэш 12 000 байт, сам мир ~1 000
+        with mock.patch.object(W, "AUTO_MAX_BYTES", 5000):
+            self.assertIn("Alpha", W.auto_backup_changed(self.game, self.backups, log=lambda m: None))
+            # мир, который сам больше предела, по-прежнему не копируется автоматически
+            (self.game / "saves" / "Beta" / "region" / "r.1.0.mca").write_bytes(b"R" * 6000)
+            self.touch_level("Beta")
+            self.assertNotIn("Beta", W.auto_backup_changed(self.game, self.backups, log=lambda m: None))
+
+    def test_all_worlds_backup_skips_cache_and_restores_worlds_apart(self):
+        # «Копия всех миров» сборки: раньше в ней был кэш Distant Horizons, а «Восстановить» сваливало
+        # все миры в одну папку (одинаковые level.dat и регионы затирали друг друга)
+        from core import instances as I
+        self.add_dh_cache("Alpha")
+        with mock.patch.object(I, "INSTANCES_DIR", self.root / "instances"):
+            inst = I.Instance(id="t", name="t", version_id="1.20.1", game_version="1.20.1")
+            shutil.copytree(self.game / "saves", inst.game_dir / "saves")
+            archive = I.InstanceManager(self.root / "instances").backup_worlds(inst)
+            with zipfile.ZipFile(archive) as zf:
+                names = set(zf.namelist())
+            self.assertIn("Alpha/level.dat", names)
+            self.assertIn("Beta/level.dat", names)
+            self.assertEqual([n for n in names if "DistantHorizons" in n], [])
+            self.assertFalse(any((inst.root / "backups").glob("*.part")), "временных файлов не остаётся")
+            restored = W.restore_backup(inst.game_dir, archive.parent, archive.name)
+            self.assertEqual(restored, "Alpha (2), Beta (2)")
+            saves = inst.game_dir / "saves"
+            self.assertEqual((saves / "Alpha (2)" / "level.dat").read_bytes(), b"LEVEL-Alpha")
+            self.assertEqual((saves / "Beta (2)" / "level.dat").read_bytes(), b"LEVEL-Beta")
+            self.assertEqual((saves / "Alpha" / "level.dat").read_bytes(), b"LEVEL-Alpha", "текущие миры не тронуты")
+
+    def test_restore_single_world_backup_as_before(self):
+        path = W.backup_world(self.game, "Alpha", self.backups)
+        self.assertEqual(W.restore_backup(self.game, self.backups, path.name), "Alpha (2)")
+        self.assertEqual((self.game / "saves" / "Alpha (2)" / "region" / "r.0.0.mca").read_bytes(), b"R" * 1000)
+
     def test_auto_backup_only_changed_worlds(self):
         self.assertEqual(sorted(W.auto_backup_changed(self.game, self.backups, log=lambda m: None)), ["Alpha", "Beta"])
         self.assertEqual(W.auto_backup_changed(self.game, self.backups, log=lambda m: None), [], "ничего не играли — копий нет")
@@ -53,6 +113,60 @@ class WorldTests(unittest.TestCase):
         items = W.list_backups(self.backups)
         self.assertEqual(sum(b["auto"] for b in items), W.AUTO_PER_WORLD)
         self.assertEqual(sum(not b["auto"] for b in items), 1, "ручная копия не удаляется автокопиями")
+
+    def test_parallel_passes_copy_once(self):
+        """Игру быстро запустили и закрыли три раза: проходы копирования не должны копировать миры трижды."""
+        import threading
+        gate = threading.Event()
+        real = W.backup_world
+
+        def slow(*a, **kw):
+            gate.wait(5)
+            return real(*a, **kw)
+        results = []
+        with mock.patch.object(W, "backup_world", side_effect=slow):
+            threads = [threading.Thread(target=lambda: results.append(
+                W.auto_backup_changed(self.game, self.backups, log=lambda m: None))) for _ in range(3)]
+            for t in threads:
+                t.start()
+            time.sleep(0.3)
+            gate.set()
+            for t in threads:
+                t.join()
+        self.assertEqual(sorted(sum(results, [])), ["Alpha", "Beta"])
+        self.assertEqual(len(list(self.backups.glob("*.zip"))), 2)
+
+    def test_interrupted_pass_keeps_done_worlds(self):
+        calls = []
+
+        def ok():
+            calls.append(1)
+            return len(calls) < 2          # после первого мира игру снова запустили
+        self.assertEqual(len(W.auto_backup_changed(self.game, self.backups, still_ok=ok, log=lambda m: None)), 1)
+        self.assertEqual(len(W.auto_backup_changed(self.game, self.backups, log=lambda m: None)), 1,
+                         "второй проход копирует только оставшийся мир")
+
+    def test_stale_part_removed_fresh_kept(self):
+        self.backups.mkdir(parents=True, exist_ok=True)
+        old, fresh = self.backups / "Alpha auto 1.part", self.backups / "Alpha auto 2.part"
+        old.write_bytes(b"x")
+        fresh.write_bytes(b"x")
+        t = time.time() - W.PART_MAX_AGE - 10
+        os.utime(old, (t, t))
+        self.assertEqual(W.clean_stale_parts(self.backups), 1)
+        self.assertFalse(old.exists())
+        self.assertTrue(fresh.exists())
+
+    def test_dedupe_keeps_newest_and_manual(self):
+        self.backups.mkdir(parents=True, exist_ok=True)
+        for name in ("Alpha auto 2026-11-18 10-25-43.zip", "Alpha auto 2026-11-18 10-25-47.zip",
+                     "Alpha auto 2026-11-18 10-25-53.zip", "Alpha 2026-11-18 10-25-50.zip"):
+            (self.backups / name).write_bytes(b"same")
+        (self.backups / "Alpha auto 2026-11-19 10-00-00.zip").write_bytes(b"diff")   # тот же размер, другое содержимое
+        self.assertEqual(W.dedupe_auto_backups(self.backups), 2)
+        left = sorted(f.name for f in self.backups.glob("*.zip"))
+        self.assertEqual(left, ["Alpha 2026-11-18 10-25-50.zip", "Alpha auto 2026-11-18 10-25-53.zip",
+                                "Alpha auto 2026-11-19 10-00-00.zip"])
 
     def test_stops_when_game_started_again(self):
         self.assertEqual(W.auto_backup_changed(self.game, self.backups, still_ok=lambda: False, log=lambda m: None), [])

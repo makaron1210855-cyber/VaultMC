@@ -113,6 +113,8 @@ registerPage('settings', {
           <button class="btn" data-a="checkUpdate">${ic('download')} Проверить обновления</button></div>
         <div id="launcherHealth"></div></div>
 
+      <div id="cloudCard"></div>
+
       <div class="card"><div class="card-title">${ic('search')} Диагностика</div>
         <p class="card-sub">Что-то не работает? Проверьте сеть или соберите отчёт — личное в нём вырезается, отправляете его вы сами.</p>
         <div class="row wrap"><button class="btn" data-a="netcheck">${ic('globe')} Проверить сеть</button>
@@ -144,6 +146,7 @@ registerPage('settings', {
       $('#ramHint', el).style.color = total && v > total - 2 ? 'var(--warn)' : '';
     };
     ramHint();
+    cloudSettingsCard(el);
 
     // .oninput/.onchange, а не addEventListener: refresh() вызывается повторно на той же странице (например, после
     // смены аккаунта) — обработчики копились, и каждая настройка сохранялась по два-три раза

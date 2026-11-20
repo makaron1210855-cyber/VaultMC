@@ -55,6 +55,7 @@ class LauncherConfig:
     hide_launcher: bool = False        # больше не используется (лаунчер в игре не прячется)
     skins_in_game: bool = True           # CustomSkinLoader + сервер скинов в сборках с модами
     show_online: bool = True             # друзья видят, что я в сети и во что играю
+    world_sync: bool = False             # облако миров (бета, этап 4 плана 8.0): выключено, пока игрок не включит
     auto_world_backups: bool = True      # после игры копировать миры, в которых играли (5 автокопий на мир)
     win_notify: bool = True              # окошки Windows о заявках в друзья и открытых мирах, когда лаунчер свёрнут
     discord_status: bool = True          # в Discord показывать «Играет в VaultMC» (только пока игра запущена)

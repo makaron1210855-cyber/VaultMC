@@ -91,7 +91,7 @@ registerPage('instance', {
           <button class="btn danger" data-a="delete">${ic('trash')}</button>
         </div>
       </div>
-      ${segHtml('tab', [['mods', 'Моды'], ['packs', 'Ресурспаки и шейдеры'], ['worlds', 'Миры'], ['history', 'История'], ['servers', 'Серверы'], ['shots', 'Скриншоты'], ['optimize', 'Оптимизация'], ['settings', 'Настройки']], el.__tab)}
+      ${segHtml('tab', [['mods', 'Моды'], ['packs', 'Ресурспаки и шейдеры'], ['worlds', 'Миры'], ['history', 'История'], ['servers', 'Серверы'], ['dedicated', 'Свой сервер'], ['shots', 'Скриншоты'], ['optimize', 'Оптимизация'], ['settings', 'Настройки']], el.__tab)}
       <div class="spacer"></div><div id="tabBody"></div>`;
     S.config.selected_instance = inst.id;
     drawInstanceIcon($('.inst-head canvas', el), inst.name, inst.color, inst.icon);
@@ -122,6 +122,7 @@ async function renderTab(el, inst) {
   const body = $('#tabBody', el);
   if (el.__tab === 'worlds') return renderWorlds(body, inst);
   if (el.__tab === 'servers') return renderServers(body, inst);
+  if (el.__tab === 'dedicated') return renderDedicated(body, inst);
   if (el.__tab === 'shots') return renderShots(body, inst);
   if (el.__tab === 'history') return renderHistory(body, inst);
   if (el.__tab === 'mods') {

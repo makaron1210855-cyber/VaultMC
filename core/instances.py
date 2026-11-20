@@ -131,7 +131,7 @@ class InstanceManager:
         def skip(folder: str, names: list[str]) -> set[str]:
             # копии миров, корзина и точки сборки остаются у оригинала: раньше они копировались целиком,
             # и «Копия сборки» с десятком копий миров занимала гигабайты и делалась минутами
-            own = {"backups", "trash", "snapshots"} if os.path.normpath(folder) == os.path.normpath(src_root) else set()
+            own = {"backups", "trash", "snapshots", ".vaultmc-sync"} if os.path.normpath(folder) == os.path.normpath(src_root) else set()
             return {n for n in names if n in ("logs", "crash-reports") or n in own}
         shutil.copytree(inst.root, self.root / new_id, ignore=skip)
         copy = Instance(**{**asdict(inst), "id": new_id, "name": inst.name + " (копия)",
@@ -140,13 +140,32 @@ class InstanceManager:
         return copy
 
     def backup_worlds(self, inst: Instance) -> Path | None:
-        """Архив всех миров сборки в instances/<id>/backups/."""
+        """Архив всех миров сборки в instances/<id>/backups/. Без session.lock и кэша модов (кэш Distant Horizons —
+        это гигабайты, мод пересоздаёт его сам): раньше копия всех миров тащила его целиком."""
+        from .worlds import world_files
         saves = inst.game_dir / "saves"
         if not saves.is_dir() or not any(saves.iterdir()):
             return None
-        target = inst.root / "backups" / f"worlds-{time.strftime('%Y-%m-%d_%H-%M-%S')}"
-        target.parent.mkdir(parents=True, exist_ok=True)
-        return Path(shutil.make_archive(str(target), "zip", saves))
+        backups = inst.root / "backups"
+        backups.mkdir(parents=True, exist_ok=True)
+        stamp, n = time.strftime("%Y-%m-%d_%H-%M-%S"), 1
+        target = backups / f"worlds-{stamp}.zip"
+        while target.exists():                   # две копии в одну секунду: вторая не затирает первую
+            n += 1
+            target = backups / f"worlds-{stamp}-{n}.zip"
+        tmp = target.with_suffix(".part")
+        try:
+            with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED, compresslevel=5) as zf:
+                for entry in sorted(saves.iterdir()):
+                    if entry.is_dir():
+                        for f in world_files(entry):
+                            zf.write(f, f"{entry.name}/{f.relative_to(entry).as_posix()}")
+                    elif entry.is_file():
+                        zf.write(entry, entry.name)
+            os.replace(tmp, target)              # недописанная копия (выключили ПК) не выглядит как целая
+        finally:
+            tmp.unlink(missing_ok=True)
+        return target
 
     # ---------------------------------------------------------------- обмен сборками
     def export_pack(self, inst: Instance, dest: Path) -> Path:

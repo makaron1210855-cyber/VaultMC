@@ -23,6 +23,7 @@ import webbrowser
 from dataclasses import asdict
 from pathlib import Path
 
+from backend.serverapi import ServerApiMixin
 from core import elyby, keys, microsoft, updater
 from core.accounts import KIND_LABELS, Account, AccountStore, AuthError, password_strength
 from core.authlib import ensure_authlib_injector, javaagent_arg
@@ -177,7 +178,7 @@ def _host_reachable(host: str, port: int, timeout: float = 5.0) -> bool:
     return False
 
 
-class Api:
+class Api(ServerApiMixin):
     def __init__(self, bus: EventBus):
         self._bus = bus
         self._window = None
@@ -219,6 +220,10 @@ class Api:
         self._running_instance = ""
         self._running_account = ""
         self._game_lines: deque[str] = deque(maxlen=4000)   # вывод текущего запуска — для разбора вылета
+        from core.worldengine import CloudEngine           # облако миров (бета): выключено, пока игрок не включит
+        self._cloud = CloudEngine(self._cfg, self._accounts, self._instances, self._instance_running, self._emit,
+                                  lambda m: self._on_runner_event("log", m))
+        threading.Thread(target=self._cloud.start, daemon=True).start()
         threading.Thread(target=self._refresh_versions_bg, daemon=True).start()
         threading.Thread(target=self._repair_shortcut, daemon=True).start()
         threading.Thread(target=self._open_pack_loop, daemon=True).start()
@@ -280,7 +285,9 @@ class Api:
             if payload == "running":
                 self._game_lines.clear()
                 self._watch_lan_world()
+                self._cloud.game_started(self._running_instance, getattr(getattr(self._runner, "process", None), "pid", 0) or 0)
             if payload == "idle":
+                self._cloud.game_stopped()
                 self._lan_open = False
                 self._lan_port = 0
                 self._room_stop()
@@ -596,6 +603,11 @@ class Api:
         if acc_id:
             self._accounts.record_session(acc_id, info["seconds"], inst.name if inst else "")
         self._room_address = ""
+        if inst:      # вылет — по коду, «Убить игру» или новому отчёту: изменённые миры облако не отправляет само (правило 4)
+            since = time.time() - int(info.get("seconds") or 0) - 60
+            fresh = any(f.stat().st_mtime >= since for f in (inst.game_dir / "crash-reports").glob("*.txt"))                 if (inst.game_dir / "crash-reports").is_dir() else False
+            crashed = info.get("code") not in (0, None) or bool(info.get("killed")) or bool(info.get("crash")) or fresh
+            threading.Thread(target=self._cloud.after_game, args=(inst, crashed), daemon=True).start()
         if inst and self._cfg.auto_world_backups:
             self._auto_world_backups(inst)
         if inst and info.get("seconds", 0) >= 300:
@@ -641,6 +653,13 @@ class Api:
             try:
                 done = W.auto_backup_changed(inst.game_dir, inst.root / "backups",
                                              lambda: not self._instance_running(inst.id), log)
+                deduped = getattr(self, "_auto_deduped", set())
+                self._auto_deduped = deduped
+                if inst.id not in deduped and not self._instance_running(inst.id):
+                    deduped.add(inst.id)
+                    extra = W.dedupe_auto_backups(inst.root / "backups")
+                    if extra:
+                        log(f"[Миры] удалено одинаковых автокопий: {extra}")
             except Exception as exc:  # noqa: BLE001  копии — не повод мешать игроку
                 log(f"[Миры] автокопии: {exc}")
                 return
@@ -1228,6 +1247,7 @@ class Api:
         try:
             skinserver.rename(old, new_nick, password)
             self._accounts.rename_offline(acc.id, new_nick)
+            self._cloud.rename_nick(old, new_nick)        # облачные миры идут за аккаунтом (тот же владелец)
         except (skinserver.SkinServerError, AuthError) as exc:
             return {"error": str(exc)}
         self._on_runner_event("log", f"[Аккаунт] ник {old} → {new_nick}")
@@ -1845,6 +1865,7 @@ class Api:
         if self._runner.state in ("running", "preparing", "installing") and self._running_instance == instance_id:
             raise RuntimeError("Сначала закройте игру этой сборки")
         self._instances.delete(self._inst(instance_id))
+        self._cloud.instance_deleted(instance_id)         # привязки уходят, облачные копии остаются
         if self._cfg.selected_instance == instance_id:
             self._cfg.selected_instance = ""
             self._save()
@@ -1913,8 +1934,9 @@ class Api:
         started = self._runner.run_task(f"Импорт {Path(path).name}...", job, "modpack_installed", new_instance=True)
         return {"started": True} if started else {"error": "Дождитесь окончания текущей операции"}
 
-    def share_instance(self, instance_id: str) -> dict:
-        """Загружает описание сборки на сервер VaultMC и возвращает код из 6 символов (живёт 30 дней)."""
+    def share_instance(self, instance_id: str, public: bool = False) -> dict:
+        """Загружает описание сборки на сервер VaultMC и возвращает код из 6 символов (живёт 30 дней).
+        public — ещё и показать в каталоге на сайте (только по явному согласию игрока)."""
         from core import skinserver
         from core.sharecode import build_pack
         if not skinserver.server_url():
@@ -1927,7 +1949,7 @@ class Api:
             return {"error": "Сборки на Quilt пока нельзя передать кодом — используйте экспорт в файл"}
         try:
             pack, manual = build_pack(inst, lambda m: self._on_runner_event("log", m))
-            code = skinserver.share_pack(acc.username, pack)
+            code = skinserver.share_pack(acc.username, pack, bool(public))
         except Exception as exc:  # noqa: BLE001
             return {"error": str(exc)}
         if not code:
@@ -1979,7 +2001,7 @@ class Api:
         W.purge_trash(inst.root / "trash")      # миры старше недели из корзины удаляются насовсем
         return {"worlds": W.list_worlds(inst.game_dir), "backups": W.list_backups(inst.root / "backups"),
                 "trash": W.list_trash(inst.root / "trash"), "running": self._instance_running(instance_id),
-                "auto": self._cfg.auto_world_backups}
+                "auto": self._cfg.auto_world_backups, "cloud": self._cloud.view(inst)}
 
     def world_action(self, instance_id: str, action: str, arg: str = "", target: str = "") -> dict:
         from core import worlds as W
@@ -1995,15 +2017,16 @@ class Api:
                     lambda: {"instance": inst.id, "file": W.backup_world(inst.game_dir, arg, inst.root / "backups").name},
                     "world_backup_done")
                 return {"ok": started} if started else {"error": "Дождитесь окончания текущей операции"}
+            avoid = self._cloud.bound_folders(inst.id)   # в имя привязанной к облаку папки не восстанавливаем
             if action == "restore":
-                return {"ok": True, "folder": W.restore_backup(inst.game_dir, inst.root / "backups", arg)}
+                return {"ok": True, "folder": W.restore_backup(inst.game_dir, inst.root / "backups", arg, avoid)}
             if action == "copy":
                 dest = self._inst(target)
                 return {"ok": True, "folder": W.copy_world(inst.game_dir, arg, dest.game_dir), "target": dest.name}
             if action == "delete":            # мир уходит в корзину на 7 дней, а не стирается
                 return {"ok": True, "entry": W.trash_world(inst.game_dir, arg, inst.root / "trash")}
             if action == "trash_restore":
-                return {"ok": True, "folder": W.restore_trash(inst.game_dir, inst.root / "trash", arg)}
+                return {"ok": True, "folder": W.restore_trash(inst.game_dir, inst.root / "trash", arg, avoid)}
             if action == "trash_delete":
                 W.delete_trash(inst.root / "trash", arg)
                 return {"ok": True}
@@ -2013,6 +2036,66 @@ class Api:
         except Exception as exc:  # noqa: BLE001
             return {"error": str(exc)}
         return {"error": "Неизвестное действие"}
+
+    # ---- облако миров (бета): core/worldengine.py ----
+    def cloud_status(self) -> dict:
+        return self._cloud.status()
+
+    def cloud_set(self, enabled: bool, device_name: str = "") -> dict:
+        res = self._cloud.set_enabled(bool(enabled), str(device_name or ""))
+        self._save()
+        if enabled:
+            threading.Thread(target=self._cloud.sync_all, daemon=True).start()
+        return res
+
+    def cloud_refresh(self) -> dict:
+        """Вкладка «Миры» открыта: свежий список облака в фоне (результат — событием cloud_update)."""
+        threading.Thread(target=self._cloud.sync_all, daemon=True).start()
+        return {"ok": True}
+
+    def _cloud_do(self, fn, *args) -> dict:
+        from core.worldengine import WorldError
+        try:
+            res = fn(*args)
+            return res if isinstance(res, dict) else {"ok": True}
+        except WorldError as exc:
+            return {"error": str(exc), "code": exc.code, "data": exc.data}
+        except Exception as exc:  # noqa: BLE001
+            _log(f"cloud: {exc}")
+            return {"error": str(exc)}
+
+    def cloud_enable_world(self, instance_id: str, folder: str, mode: str = "") -> dict:
+        return self._cloud_do(self._cloud.enable_world, self._inst(instance_id), folder, mode)
+
+    def cloud_disable_world(self, instance_id: str, folder: str) -> dict:
+        return self._cloud_do(self._cloud.disable_world, self._inst(instance_id), folder)
+
+    def cloud_choose_info(self, instance_id: str, folder: str) -> dict:
+        return self._cloud_do(self._cloud.choose_info, self._inst(instance_id), folder)
+
+    def cloud_resolve(self, instance_id: str, folder: str, action: str) -> dict:
+        return self._cloud_do(self._cloud.resolve, self._inst(instance_id), folder, action)
+
+    def cloud_send_now(self, instance_id: str, folder: str) -> dict:
+        return self._cloud_do(self._cloud.send_now, self._inst(instance_id), folder)
+
+    def cloud_redownload(self, instance_id: str, folder: str) -> dict:
+        return self._cloud_do(self._cloud.redownload, self._inst(instance_id), folder)
+
+    def cloud_reupload(self, instance_id: str, folder: str) -> dict:
+        return self._cloud_do(self._cloud.reupload, self._inst(instance_id), folder)
+
+    def cloud_download(self, instance_id: str, nick: str, wid: str, confirmed: bool = False) -> dict:
+        return self._cloud_do(self._cloud.download_cloud, self._inst(instance_id), nick, wid, bool(confirmed))
+
+    def cloud_delete(self, nick: str, wid: str) -> dict:
+        return self._cloud_do(self._cloud.delete_cloud, nick, wid)
+
+    def cloud_restore_prev(self, nick: str, wid: str) -> dict:
+        return self._cloud_do(self._cloud.restore_prev, nick, wid)
+
+    def cloud_abort_remote(self, nick: str, wid: str) -> dict:
+        return self._cloud_do(self._cloud.abort_remote, nick, wid)
 
     def servers(self, instance_id: str) -> list:
         from core.worlds import list_servers
@@ -2052,6 +2135,11 @@ class Api:
     def server_ping(self, address: str) -> dict:
         from core.worlds import ping
         return ping(address)
+
+    def all_screenshots(self, limit: int = 200) -> list:
+        """Общая галерея: скриншоты всех сборок, новые сверху."""
+        from core.worlds import recent_screenshots
+        return recent_screenshots(self._instances.list(), limit)
 
     def screenshots(self, instance_id: str) -> list:
         from core.worlds import list_screenshots
@@ -2656,7 +2744,7 @@ class Api:
         self._accounts.save()
         return AuthInfo(acc.username, acc.uuid, acc.token(), "msa")
 
-    def play(self, instance_id: str, server: str = "", force: bool = False) -> dict:
+    def play(self, instance_id: str, server: str = "", force: bool = False, cloud: str = "") -> dict:
         acc = self._accounts.active
         if acc is None:
             return {"error": "Войдите в аккаунт"}
@@ -2672,7 +2760,7 @@ class Api:
         has_window = self._launch_window_open(inst)
         self._on_runner_event("state", "preparing")
         self._on_runner_event("progress", (0.01, "Проверка модов..."))
-        threading.Thread(target=self._play_job, args=(inst, acc, server, force), daemon=True).start()
+        threading.Thread(target=self._play_job, args=(inst, acc, server, force, cloud), daemon=True).start()
         return {"ok": True, "window": has_window}
 
     def _launch_window_open(self, inst) -> bool:
@@ -2702,9 +2790,9 @@ class Api:
         if self._launch_win is not None:
             self._launch_win.close()
 
-    def _play_job(self, inst, acc, server: str, force: bool) -> None:
+    def _play_job(self, inst, acc, server: str, force: bool, cloud: str = "") -> None:
         try:
-            self._play_run(inst, acc, server, force)
+            self._play_run(inst, acc, server, force, cloud)
         except Exception as exc:  # noqa: BLE001
             _log(f"play: {exc}")
             self._on_runner_event("log", f"[Ошибка] {exc}")
@@ -2718,7 +2806,7 @@ class Api:
         self._on_runner_event("state", "idle")
         self._on_runner_event("progress", (0.0, text))
 
-    def _play_run(self, inst, acc, server: str, force: bool) -> None:
+    def _play_run(self, inst, acc, server: str, force: bool, cloud: str = "") -> None:
         ram = inst.ram_gb or self._auto_ram(inst)
         total = total_ram_gb() or 0
         if total and ram > max(2, total - 3):   # больше, чем есть ОЗУ: система уходит в подкачку и всё зависает
@@ -2748,6 +2836,16 @@ class Api:
             if issues:
                 self._emit("modcheck", {"modcheck": issues, "instance": inst.id, "address": server})
                 return self._play_stopped("Нужно исправить моды")
+        if self._play_stop.is_set():
+            return self._play_stopped("Запуск отменён")
+        try:   # облако миров: свежие версии перед игрой; спорное и предупреждения — окном (cloud_gate)
+            gate = self._cloud.before_play(inst, cloud, lambda p, t: self._on_runner_event("progress", (p, t)))
+        except Exception as exc:  # noqa: BLE001  облако — не повод не запускать игру
+            log(f"[Облако] {exc}")
+            gate = None
+        if gate:
+            self._emit("cloud_gate", {**gate, "instance": inst.id, "address": server})
+            return self._play_stopped("Нужно решение про мир")
         if self._play_stop.is_set():
             return self._play_stopped("Запуск отменён")
         t_checks = time.monotonic()
@@ -2802,6 +2900,7 @@ class Api:
                 self._dns_bridge.close()
                 self._dns_bridge = None
             return self._play_stopped("Запуск отменён")
+        self._cloud.note_launch(inst.id)
         if not self._runner.launch(target, prepare, server):
             if self._dns_bridge:
                 self._dns_bridge.close()

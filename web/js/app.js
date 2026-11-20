@@ -4,13 +4,13 @@
    ============================================================================= */
 
 /* ---------------------------------------------------------------- кнопка «Играть» */
-async function play(server, force = false) {
+async function play(server, force = false, cloud = '') {
   if (!S.account) return showAuth();
   const inst = S.selected;
   if (!inst) { toast('Сначала создайте сборку', 'warn'); return openNewInstance(); }
   const address = typeof server === 'string' ? server : '';
   // запуск готовится в фоне: ответ «ок» сразу, проверка модов придёт событием modcheck
-  const res = await safe(api.play(inst.id, address, force));
+  const res = await safe(api.play(inst.id, address, force, cloud));
   if (res && okOrToast(res)) {
     S.launchWin = !!res.window;   // есть отдельное окно запуска — карточку и тост в лаунчере не показываем
     if (!S.launchWin) toast(address ? `Запускаю «${inst.name}» и подключаюсь к ${address}` : `Запускаю «${inst.name}»...`);
