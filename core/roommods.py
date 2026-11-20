@@ -303,7 +303,7 @@ def update_mods(game_dir: Path, mods, log=print) -> dict:
         name = str((file or {}).get("filename", ""))
         project = str((version or {}).get("project_id", "")) if isinstance(version, dict) else ""
         if not file or not project or not str(file.get("url", "")).startswith("https://cdn.modrinth.com/") \
-                or not re.fullmatch(r"[^\/:*?\"<>|]+\.jar", name):
+                or not re.fullmatch(r"[^\\/:*?\"<>|]+\.jar", name):
             failed.append(m["name"])
             log(f"[Комната] {m['name']}: версии друга нет на Modrinth — попросите файл у него")
             continue
@@ -313,7 +313,8 @@ def update_mods(game_dir: Path, mods, log=print) -> dict:
     errors: list[str] = []
     if updates:
         _, errors = apply(game_dir, updates, log)
-    bad = {e.split(":", 1)[0] for e in errors}
+    # apply пишет ошибки как «название: причина»; в названии мода может быть и двоеточие, поэтому сверяем по префиксу
+    bad = {u["title"] for u in updates if any(e.startswith(u["title"] + ": ") for e in errors)}
     updated = [u["title"] for u in updates if u["title"] not in bad]
     failed += [u["title"] for u in updates if u["title"] in bad]
     for u in updates:

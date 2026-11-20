@@ -97,6 +97,29 @@ class RoomModsTests(unittest.TestCase):
         self.assertEqual(res, {"updated": [], "failed": ["a"]})
         ap.assert_not_called()
 
+    def test_update_mods_failure_with_colon_in_title(self):
+        a = self.host / "a-2.0.jar"
+        _jar(a, "a", "2.0")
+        _jar(self.guest / "a-1.0.jar", "a", "1.0")
+        mods = [{**self._host_entry(a, "a", "2.0"), "name": "Foo: Bar"}]
+        found = {mods[0]["sha1"]: {"project_id": "PRJ", "version_number": "2.0", "files": [
+            {"filename": "a-2.0.jar", "url": "https://cdn.modrinth.com/x/a-2.0.jar", "hashes": {"sha1": mods[0]["sha1"]}}]}}
+        with mock.patch("core.net.post_json", return_value=found),                 mock.patch("core.modupdates.apply", lambda g, u, log=print: (0, ["Foo: Bar: нет места"])):
+            res = roommods.update_mods(self.guest.parent, mods, lambda m: None)
+        self.assertEqual(res, {"updated": [], "failed": ["Foo: Bar"]})
+
+    def test_update_mods_refuses_backslash_in_file_name(self):
+        a = self.host / "a-2.0.jar"
+        _jar(a, "a", "2.0")
+        _jar(self.guest / "a-1.0.jar", "a", "1.0")
+        mods = [self._host_entry(a, "a", "2.0")]
+        found = {mods[0]["sha1"]: {"project_id": "PRJ", "files": [
+            {"filename": "..\\a.jar", "url": "https://cdn.modrinth.com/x/a.jar", "hashes": {"sha1": mods[0]["sha1"]}}]}}
+        with mock.patch("core.net.post_json", return_value=found), mock.patch("core.modupdates.apply") as ap:
+            res = roommods.update_mods(self.guest.parent, mods, lambda m: None)
+        self.assertEqual(res["failed"], ["a"])
+        ap.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
