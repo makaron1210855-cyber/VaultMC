@@ -24,6 +24,8 @@ async function renderWorlds(body, inst) {
       ${res.running ? '<br><b>Игра запущена</b> — копию сделать можно после выхода: открытый мир скопировался бы не целиком.' : ''}</div>
       <button class="btn sm ghost" data-a="folder">${ic('folder')} Папка миров</button>
       <button class="btn sm ghost" data-a="bfolder">${ic('archive')} Папка копий</button></div>
+    ${cloud.supported && !cloud.enabled && res.worlds.length ? `<div class="row" style="margin-bottom:10px"><div class="small muted grow">${ic('cloud')} <b>Облако миров:</b> храните мир на сервере VaultMC и открывайте его на другом компьютере. Включается в «Настройках».</div>
+      <button class="btn sm" data-c="gosettings">Включить</button></div>` : ''}
     <div class="list">${res.worlds.map((w) => `
       <div class="item world" data-w="${esc(w.folder)}">
         ${w.icon ? `<img class="world-ic" src="${w.icon}" alt="">` : `<div class="world-ic ph">${ic('world')}</div>`}

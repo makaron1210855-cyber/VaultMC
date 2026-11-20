@@ -135,9 +135,15 @@ async function cloudSettingsCard(el) {
   const st = await safe(api.cloud_status());
   if (!st || !st.supported || !host.isConnected) { host.innerHTML = ''; return; }   // сервер без облака — раздел прячем
   host.innerHTML = `<div class="card"><div class="card-title">${ic('cloud')} Облако миров (бета)</div>
-    <p class="card-sub">Мир хранится на сервере VaultMC и переезжает между вашими компьютерами. Выключено по умолчанию; для каждого мира включается отдельно на вкладке «Миры».</p>
+    <p class="card-sub">Копия вашего мира лежит на сервере VaultMC. Играете дома, потом на другом компьютере — лаунчер сам скачает свежий мир, а после игры отправит изменения.</p>
+    <ol class="small muted" style="margin:0 0 12px;padding-left:20px;line-height:1.6">
+      <li>Включите переключатель ниже.</li>
+      <li>Откройте сборку → вкладка «Миры» → у нужного мира нажмите «В облако».</li>
+      <li>На другом ПК войдите в тот же ник и включите облако — мир появится на вкладке «Миры» в блоке «Только в облаке».</li>
+    </ol>
     <label class="switch"><input type="checkbox" id="cloudOn" ${st.enabled ? 'checked' : ''}><span class="track"></span><span class="lbl"><b>Облако миров</b><small>Миры на компьютере облако не удаляет никогда</small></span></label>
-    <label class="field"><span>Название этого компьютера</span><input class="input" id="cloudDev" maxlength="40" value="${esc(st.device)}"></label></div>`;
+    <label class="field" style="margin-top:10px"><span>Название этого компьютера</span><input class="input" id="cloudDev" maxlength="40" value="${esc(st.device)}"></label></div>`;
+  hydrateIcons(host);
   const on = $('#cloudOn', host), dev = $('#cloudDev', host);
   on.onchange = async () => {
     if (on.checked) {
@@ -178,7 +184,8 @@ async function cloudHandleClick(e, inst, body, rerender) {
   const w = e.target.closest('[data-w]')?.dataset.w;
   const cw = e.target.closest('[data-cw]');
   const run = async (p, ok) => { const r = await safe(p); if (r && r.error) toast(r.error, 'error'); else if (ok) toast(ok); rerender(); return r; };
-  if (c === 'choose') openCloudChoose(inst.id, w, rerender);
+  if (c === 'gosettings') go('settings');
+  else if (c === 'choose') openCloudChoose(inst.id, w, rerender);
   else if (c === 'send') await run(api.cloud_send_now(inst.id, w), 'Отправляю мир...');
   else if (c === 'redownload') await run(api.cloud_redownload(inst.id, w), 'Скачиваю мир из облака...');
   else if (c === 'reupload') {
