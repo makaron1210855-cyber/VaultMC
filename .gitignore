@@ -15,3 +15,7 @@ saves/
 server/.wrangler/
 
 .playwright-mcp/
+
+# личное, не публиковать
+CLAUDE.md
+docs/plan-8.0.md
