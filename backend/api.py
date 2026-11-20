@@ -2220,7 +2220,43 @@ class Api(ServerApiMixin):
         log = lambda m: self._on_runner_event("log", m)  # noqa: E731
         items = modcopy.plan(src.game_dir, src.loader, src.game_version, dst.game_dir, dst.loader, dst.game_version, log)["items"]
         self._auto_snapshot(dst, f"перед модами из «{src.name}»")
-        return modcopy.install(src.game_dir, dst.game_dir, dst.loader, dst.game_version, items, [str(f) for f in files], log)
+        return modcopy.install(src.game_dir, dst.game_dir, dst.loader, dst.game_version, items, [str(f) for f in files], log,
+                               source_name=src.name)
+
+    def mod_copy_history(self, instance_id: str) -> list:
+        """Прошлые переносы модов в эту сборку, которые можно убрать."""
+        from core import modcopy
+        return modcopy.history(self._inst(instance_id).game_dir)
+
+    def mod_copy_undo(self, instance_id: str, batch_id: str) -> dict:
+        """Убрать моды одного переноса. Перед этим — точка в «Истории»; мод, нужный другому моду, остаётся."""
+        from core import modcopy
+        if self._game_lock():
+            return {"error": "Закройте игру — моды можно убрать, пока она не запущена"}
+        inst = self._inst(instance_id)
+        self._auto_snapshot(inst, "перед отменой переноса модов")
+        return modcopy.undo(inst.game_dir, inst.loader, inst.game_version, str(batch_id), lambda m: self._on_runner_event("log", m))
+
+    # ---------------------------------------------------------------- лишние моды (core/optaudit.py)
+    def mod_audit(self, instance_id: str) -> dict:
+        """Что в сборке реально бесполезно или мешает: два мода одной роли, устаревшие переходники, лишние библиотеки."""
+        from core import optaudit
+        inst = self._inst(instance_id)
+        if not inst.supports_mods:
+            return {"items": [], "mods": 0}
+        titles = {Path(str(e.get("file", ""))).name: e.get("title") for e in ModIndex(inst.game_dir).data.values()
+                  if isinstance(e, dict) and e.get("file")}
+        items = optaudit.scan(inst.game_dir / "mods", inst.loader, inst.game_version, titles)
+        return {"items": items, "mods": len([m for m in ModManager(inst.game_dir).list_mods() if m.enabled])}
+
+    def mod_audit_apply(self, instance_id: str, files: list) -> dict:
+        """Выключить выбранные «лишние» моды (имя.jar.disabled). Перед этим — точка в «Истории»."""
+        from core import optaudit
+        if self._game_lock():
+            return {"error": "Закройте игру — моды можно менять, пока она не запущена"}
+        inst = self._inst(instance_id)
+        self._auto_snapshot(inst, "перед чисткой лишних модов")
+        return optaudit.apply(inst.game_dir / "mods", inst.loader, inst.game_version, [str(f) for f in files])
 
     def toggle_mod(self, instance_id: str, filename: str) -> list:
         manager = ModManager(self._inst(instance_id).game_dir)

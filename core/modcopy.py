@@ -12,8 +12,10 @@ install() — ставит выбранные моды (их обязатель�
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
+import time
 import uuid
 from pathlib import Path
 
@@ -21,11 +23,14 @@ from . import conflicts
 from .modcheck import ModInfo, _loader_ok_any, _pick_form, check_mods, read_mod, version_matches
 from .modsources import MODRINTH_API, ModIndex, _compatible_loaders
 from .net import download, post_json
+from .modsafe import removal_check
 from .modupdates import _sha1, _title
 
 # моды, которые лаунчер ставит и убирает сам (комнаты, скины) — переносить их не нужно
 SERVICE_PREFIXES = ("e4mc", "e4all", "mcwifipnp", "lanworldplugnplay", "customskinloader")
 STAGE_DIR = ".vaultmc_modcopy"
+LOG_NAME = ".vaultmc-modcopy-log.json"       # что и когда перенесли — чтобы можно было убрать
+LOG_KEEP = 10
 
 
 def _norm(name: str) -> str:
@@ -200,8 +205,73 @@ def _new_problems(dst_mods: Path, staged: dict[str, Path], loader: str, game_ver
     return bad
 
 
+def _read_log(game: Path) -> list[dict]:
+    try:
+        data = json.loads((game / LOG_NAME).read_text(encoding="utf-8"))
+        return [b for b in data if isinstance(b, dict) and isinstance(b.get("files"), list)] if isinstance(data, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def _write_log(game: Path, batches: list[dict]) -> None:
+    try:
+        (game / LOG_NAME).write_text(json.dumps(batches[-LOG_KEEP:], ensure_ascii=False, indent=1), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def history(game: Path) -> list[dict]:
+    """Переносы, которые ещё можно убрать (новые первыми). Файлы, которых в сборке уже нет, в счёт не идут."""
+    mods = game / "mods"
+    out = []
+    for b in reversed(_read_log(game)):
+        alive = [f for f in b["files"] if (mods / f["file"]).is_file() or (mods / (f["file"] + ".disabled")).is_file()]
+        if alive:
+            out.append({"id": b.get("id", ""), "at": b.get("at", 0), "source": b.get("source", ""),
+                        "mods": [{"file": f["file"], "name": f.get("name") or f["file"]} for f in alive]})
+    return out
+
+
+def undo(game: Path, loader: str, game_version: str, batch_id: str, log=print) -> dict:
+    """Убирает моды одного переноса (файлы удаляются; точку «История» делает backend заранее).
+    Мод, который за это время потребовался другому моду сборки, остаётся — с объяснением."""
+    mods = game / "mods"
+    batches = _read_log(game)
+    batch = next((b for b in batches if b.get("id") == batch_id), None)
+    if not batch:
+        return {"removed": [], "kept": [], "error": "Такого переноса нет в журнале"}
+    by_file = {f["file"]: f.get("name") or f["file"] for f in batch["files"]}
+    on = [f for f in by_file if (mods / f).is_file()]
+    off = [f for f in by_file if (mods / (f + ".disabled")).is_file() and f not in on]
+    allowed, blocked = removal_check(mods, loader, game_version, on)
+    removed: list[str] = []
+    kept = [{"name": by_file[f], "reason": r} for f, r in blocked.items()]
+    for f in allowed + off:
+        for path in (mods / f, mods / (f + ".disabled")):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as exc:
+                kept.append({"name": by_file[f], "reason": f"файл занят: {exc}"})
+                break
+        else:
+            removed.append(f)
+    if removed:
+        index = ModIndex(game)
+        for key in [k for k, e in index.data.items() if isinstance(e, dict) and Path(str(e.get("file", ""))).name in removed]:
+            index.data.pop(key, None)
+        try:
+            index.path.write_text(json.dumps(index.data, indent=2, ensure_ascii=False), encoding="utf-8")
+        except OSError:
+            pass
+    left = [f for f in batch["files"] if f["file"] not in removed]
+    batches = [b for b in batches if b.get("id") != batch_id] + ([{**batch, "files": left}] if left else [])
+    _write_log(game, batches)
+    log(f"[Перенос модов] убрано {len(removed)}, оставлено {len(kept)}")
+    return {"removed": [by_file[f] for f in removed], "kept": kept}
+
+
 def install(src_game: Path, dst_game: Path, dst_loader: str, dst_game_version: str,
-            items: list[dict], files: list[str], log=print) -> dict:
+            items: list[dict], files: list[str], log=print, source_name: str = "") -> dict:
     dst_mods = dst_game / "mods"
     dst_mods.mkdir(parents=True, exist_ok=True)
     chosen = [i for i in items if i["file"] in set(files) and i["status"] in ("copy", "download")]
@@ -243,12 +313,14 @@ def install(src_game: Path, dst_game: Path, dst_loader: str, dst_game_version: s
                 skipped.append({"name": meta[n]["name"], "reason": why})
                 staged.pop(n, None)
         installed: list[str] = []
+        batch_files: list[dict] = []
         index = ModIndex(dst_game)
         src_titles = _titles(src_game)
         for name, path in staged.items():
             shutil.move(str(path), dst_mods / name)
             c = meta[name]
             installed.append(c["name"])
+            batch_files.append({"file": name, "name": c["name"]})
             title, source, pid = src_titles.get(c["file"], ("", "", ""))
             if c["status"] == "download" and c.get("project"):
                 source, pid = "modrinth", c["project"]
@@ -257,6 +329,9 @@ def install(src_game: Path, dst_game: Path, dst_loader: str, dst_game_version: s
                     index.add(source, pid, title or c["name"], name, "mods")
                 except OSError:
                     pass
+        if batch_files:
+            _write_log(dst_game, _read_log(dst_game) + [{"id": uuid.uuid4().hex[:8], "at": int(time.time()),
+                                                         "source": source_name, "files": batch_files}])
         log(f"[Перенос модов] поставлено {len(installed)}, не поставлено {len(skipped)}")
         return {"installed": installed, "skipped": skipped, "deps_added": added}
     finally:

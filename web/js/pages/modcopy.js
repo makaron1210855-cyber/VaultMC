@@ -15,9 +15,33 @@ function openModCopy(inst, onDone) {
       или загрузчик другие — скачает версию мода под эту сборку. Мод, который сломал бы сборку, не ставится.</p>
     <label class="field"><span>Откуда взять моды</span><select class="input" id="mcSrc">${others.map((i) =>
       `<option value="${esc(i.id)}">${esc(i.name)} · ${esc(i.loaderLabel)} ${esc(i.game_version)}</option>`).join('')}</select></label>
+    <div id="mcUndo"></div>
     <div id="mcBody" style="margin-top:12px"></div>`, { wide: true });
   const body = $('#mcBody', m);
   let plan = null;
+
+  // последние переносы в эту сборку: их можно убрать целиком («я поставил лишнего»)
+  const loadHistory = async () => {
+    const h = await safe(api.mod_copy_history(inst.id)) || [];
+    const box = $('#mcUndo', m); if (!box || !m.isConnected) return;
+    const last = h[0];
+    box.innerHTML = last ? `<div class="crash-item" style="margin-top:12px"><div class="grow">
+        <b>Последний перенос — модов: ${last.mods.length}${last.source ? `, из «${esc(last.source)}»` : ''}</b>
+        <p class="small muted" style="margin:4px 0 0">${last.mods.slice(0, 8).map((x) => esc(x.name)).join(', ')}${last.mods.length > 8 ? ' и др.' : ''}</p></div>
+        <button class="btn" data-undo="${esc(last.id)}">${ic('trash')} Убрать эти моды</button></div>` : '';
+    hydrateIcons(box);
+    const btn = $('[data-undo]', box);
+    if (btn) btn.onclick = async () => {
+      if (!await confirmDialog('Убрать эти моды?', `Из сборки «${inst.name}» будут удалены моды последнего переноса (${last.mods.length}). Перед этим лаунчер сохранит точку во вкладке «История». Мод, который за это время понадобился другому моду, останется.`, 'Убрать', true)) return;
+      btn.disabled = true;
+      const r = await safe(api.mod_copy_undo(inst.id, last.id));
+      if (!m.isConnected) return;
+      if (!r || r.error) { if (r?.error) toast(r.error, 'error'); return loadHistory(); }
+      toast(`Убрано модов: ${r.removed.length}${r.kept.length ? `, оставлено: ${r.kept.length} (нужны другим модам)` : ''}`, r.kept.length ? 'warn' : 'info', 7000);
+      if (onDone) onDone();
+      await loadHistory(); load();
+    };
+  };
 
   const load = async () => {
     body.innerHTML = '<div class="row muted"><span class="spinner"></span> Сравниваю сборки и ищу версии модов...</div>';
@@ -82,8 +106,10 @@ function openModCopy(inst, onDone) {
     hydrateIcons(body);
     body.querySelectorAll('[data-close]').forEach((b) => (b.onclick = m.close));
     if (onDone) onDone();
+    loadHistory();
   };
 
   $('#mcSrc', m).onchange = load;
+  loadHistory();
   load();
 }

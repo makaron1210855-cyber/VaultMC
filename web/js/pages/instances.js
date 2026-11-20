@@ -132,7 +132,8 @@ async function renderTab(el, inst) {
         ${inst.loader !== 'vanilla' ? `<button class="btn" data-a="updates">${ic('refresh')} Обновления</button>
         <button class="btn" data-a="rollback" title="Вернуть мод к версии до обновления">${ic('refresh')} Откат</button>` : ''}
         <button class="btn" data-a="repair" title="Только если Minecraft не запускается или даёт чёрный экран. Если игра работает — не нужно">${ic('shield')} Починка</button>
-        ${inst.loader !== 'vanilla' ? `<button class="btn" data-a="modcopy" title="Добавить моды, которые есть в другой вашей сборке">${ic('copy')} Из другой сборки</button>` : ''}
+        ${inst.loader !== 'vanilla' ? `<button class="btn" data-a="modcopy" title="Добавить моды, которые есть в другой вашей сборке">${ic('copy')} Из другой сборки</button>
+        <button class="btn" data-a="audit" title="Найти моды, которые точно бесполезны или мешают (два рендера, лишние библиотеки и т. п.)">${ic('eraser')} Лишние моды</button>` : ''}
         <button class="btn primary" data-a="catalog">${ic('download')} Найти моды</button></div>
       <div class="list" id="modList"><div class="row muted"><span class="spinner"></span> Загрузка...</div></div>`;
     hydrateIcons(body);
@@ -158,6 +159,7 @@ async function renderTab(el, inst) {
       if (a === 'updates') openModUpdates(inst, e.target.closest('[data-a]'));
       if (a === 'repair') openRepair(inst, async () => { mods = await safe(api.instance_mods(inst.id)) || mods; draw(); });
       if (a === 'rollback') openModRollback(inst, async () => { mods = await safe(api.instance_mods(inst.id)) || mods; draw(); });
+      if (a === 'audit') openModAudit(inst, async () => { mods = await safe(api.instance_mods(inst.id)) || mods; if (body.isConnected) draw(); });
       if (a === 'modcopy') openModCopy(inst, async () => { mods = await safe(api.instance_mods(inst.id)) || mods; if (body.isConnected) draw(); });
       const row = e.target.closest('.item[data-f]');
       if (row && e.target.closest('[data-d]')) {
@@ -185,6 +187,7 @@ async function renderTab(el, inst) {
           <div class="list" id="optList">${Object.entries(pack).map(([slug, d]) => `<div class="item" style="padding:8px 10px" data-slug="${slug}">${checkHtml(slug, '', true)}<div class="small grow">${esc(d)}</div></div>`).join('')}</div>
           <div class="spacer"></div>
           <button class="btn primary" data-a="pack" ${inst.loader === 'vanilla' ? 'disabled' : ''}>${ic('download')} Установить выбранные</button>
+          <button class="btn" data-a="audit" ${inst.loader === 'vanilla' ? 'disabled' : ''} title="Моды оптимизации иногда мешают друг другу. Лаунчер найдёт только то, что точно бесполезно или конфликтует">${ic('eraser')} Проверить на лишние</button>
           ${inst.loader === 'vanilla' ? '<p class="note">Моды работают только в сборках с Fabric, Forge или NeoForge.</p>' : ''}
         </div>
         <div>
@@ -253,6 +256,7 @@ async function renderTab(el, inst) {
         toast(r.mods_started ? `Настройки применены. Ставлю моды оптимизации (${r.mods}) — прогресс внизу` : 'Настройки применены — сработают при следующем запуске', 'info', 7000);
         t.innerHTML = `${ic('check')} Применено`; hydrateIcons(t);
       }
+      if (t.dataset.a === 'audit') return openModAudit(inst);
       if (t.dataset.a === 'pack') {
         const slugs = $$('input[data-key]:checked:not(:disabled)', body).map((c) => c.dataset.key);
         if (!slugs.length) return toast('Отметьте хотя бы один мод', 'warn');
