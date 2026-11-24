@@ -2087,6 +2087,13 @@ const I18N_EN = {
 ". Остальные моды друга вам не нужны.": ". You don't need your friend's other mods.",
 "Зайти как есть": "Join as is",
 "Моды обновлены до версии друга: ": "Mods updated to your friend's version: ",
+"Пароль на сервере уже изменён, код восстановления использован. Войдите с новым паролем.": "The password on the server is already changed and the recovery code is used up. Sign in with the new password.",
+"Пароль на этом ПК изменён, но сервер VaultMC его не принял (нет связи?). Когда появится интернет, войдите в аккаунт с новым паролем — лаунчер передаст его на сервер": "The password is changed on this PC, but the VaultMC server did not accept it (no connection?). When the internet is back, sign in with the new password — the launcher will send it to the server",
+"Сборка ещё устанавливается — дождитесь окончания установки": "The build is still installing — wait for the installation to finish",
+"Не удалось сохранить новый ник на этом ПК — попробуйте ещё раз": "Could not save the new nickname on this PC — try again",
+"Не удалось взять картинку — попробуйте другой файл": "Could not use this picture — try another file",
+"Папку с общими файлами нельзя сменить, пока есть сборки. Сначала удалите сборки или перенесите папку вручную": "The shared files folder can't be changed while there are builds. Delete the builds first or move the folder by hand",
+"Укажите папку для общих файлов игры": "Choose a folder for the shared game files",
 };
 
 const I18N = {

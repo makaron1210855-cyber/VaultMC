@@ -37,6 +37,12 @@ const getAccentHex =() => (ACCENTS[S.config.accent] || ACCENTS['Алмазный
 
 async function saveSetting(values) {
   const cfg = await safe(api.save_settings(values));
+  if (cfg?.error) {
+    toast(cfg.error);
+    // вернуть поле к сохранённому значению, иначе на экране будет путь, которого нет в настройках
+    if ('data_dir' in values) { const inp = document.querySelector('[data-key=data_dir]'); if (inp) inp.value = S.config.data_dir; }
+    return;
+  }
   if (cfg) Object.assign(S.config, cfg);
 }
 
@@ -233,7 +239,7 @@ registerPage('settings', {
       if (a === 'rename') openRenameDialog();
       if (a === 'pw') {
         const r = await safe(api.change_password($('#pw0', el).value, $('#pw1', el).value, $('#pw2', el).value));
-        if (r && okOrToast(r)) { toast('Пароль изменён'); ['#pw0', '#pw1', '#pw2'].forEach((s) => ($(s, el).value = '')); }
+        if (r && okOrToast(r)) { toast(r.warning || 'Пароль изменён'); ['#pw0', '#pw1', '#pw2'].forEach((s) => ($(s, el).value = '')); }
       }
     };
   },

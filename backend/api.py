@@ -130,9 +130,28 @@ def _icon_data(inst: Instance) -> str:
     cached = _ICON_CACHE.get(str(path))
     if cached and cached[0] == mtime:
         return cached[1]
-    data = "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode()
+    try:    # файл мог исчезнуть между stat и чтением — тогда пиксельная иконка, а не падение списка сборок
+        data = "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode()
+    except OSError:
+        return ""
     _ICON_CACHE[str(path)] = (mtime, data)
     return data
+
+
+def _fresh_crash_report(game_dir: Path, since: float) -> bool:
+    """Есть ли в crash-reports отчёт, записанный после since. Файл может исчезнуть во время проверки — тогда пропускаем его."""
+    folder = game_dir / "crash-reports"
+    try:
+        reports = list(folder.glob("*.txt")) if folder.is_dir() else []
+    except OSError:
+        return False
+    for report in reports:
+        try:
+            if report.stat().st_mtime >= since:
+                return True
+        except OSError:
+            continue
+    return False
 
 
 GAME_LOCK_MSG = "Во время игры аккаунт сменить нельзя — сначала закройте игру"
@@ -191,6 +210,7 @@ class Api(ServerApiMixin):
             if self._cfg.tunnel_mod in ("e4all", "", None):
                 self._cfg.tunnel_mod = "e4mc+lan"
             self._cfg.tunnel_migrated = True
+            self._save()      # иначе миграция повторится и при следующем запуске, перезаписав выбор игрока
         self._accounts = AccountStore()
         self._instances = InstanceManager()
         self._friends = FriendStore()
@@ -605,7 +625,7 @@ class Api(ServerApiMixin):
         self._room_address = ""
         if inst:      # вылет — по коду, «Убить игру» или новому отчёту: изменённые миры облако не отправляет само (правило 4)
             since = time.time() - int(info.get("seconds") or 0) - 60
-            fresh = any(f.stat().st_mtime >= since for f in (inst.game_dir / "crash-reports").glob("*.txt"))                 if (inst.game_dir / "crash-reports").is_dir() else False
+            fresh = _fresh_crash_report(inst.game_dir, since)
             crashed = info.get("code") not in (0, None) or bool(info.get("killed")) or bool(info.get("crash")) or fresh
             threading.Thread(target=self._cloud.after_game, args=(inst, crashed), daemon=True).start()
         if inst and self._cfg.auto_world_backups:
@@ -794,7 +814,8 @@ class Api(ServerApiMixin):
         """Применяет исправления выбранных находок (все обратимы). Возвращает, что сделано."""
         from core import repair
         inst = self._inst(instance_id)
-        if self._runner.state == "running" and self._running_instance == inst.id:
+        # preparing (подготовка к запуску) тоже меняет файлы модов — не даём чинить «на ходу»
+        if self._runner.state in ("running", "preparing") and self._running_instance == inst.id:
             return {"error": "Сначала закройте игру"}
         wanted = set(map(str, ids or []))
         self._auto_snapshot(inst, "Перед «Починкой»")
@@ -828,17 +849,22 @@ class Api(ServerApiMixin):
         builtin = keys.CURSEFORGE_API_KEY.strip()
         # Старый ключ из настроек (времён Neon) мог оказаться неверным, а поле теперь скрыто.
         # Проверяем его один раз: если CurseForge его не принимает — стираем и берём встроенный.
-        if user and user != builtin and not getattr(self, "_cf_user_checked", False):
-            self._cf_user_checked = True
+        # флаг ставим только по итогу: нет сети — повторим через 5 минут, а не оставим неверный ключ на всю сессию
+        # проверяем каждый новый ключ, а не только первый: «inf» запрещал проверку навсегда
+        if (user and user != builtin and user != getattr(self, "_cf_checked_key", None)
+                and time.monotonic() >= getattr(self, "_cf_check_next", 0.0)):
             try:
                 get_json(f"{CURSEFORGE_API}/games/{CF_GAME_MINECRAFT}", headers={"x-api-key": user})
+                self._cf_checked_key = user                 # этот ключ принят — больше не проверяем
             except HttpError as exc:
                 if exc.status in (401, 403):
                     self._cfg.curseforge_api_key = ""
                     self._save()
                     user = ""
-            except Exception:  # noqa: BLE001 — нет сети: оставляем как есть
-                pass
+                else:
+                    self._cf_check_next = time.monotonic() + 300
+            except Exception:  # noqa: BLE001 — нет сети: оставляем как есть, проверим позже
+                self._cf_check_next = time.monotonic() + 300
         return user or builtin or CF_VIA_SERVER
 
     def _save(self) -> None:
@@ -950,13 +976,17 @@ class Api(ServerApiMixin):
         if not file:
             return {}
         src = Path(file)
-        if src.stat().st_size > 12 * 1024 * 1024:
-            return {"error": "Картинка больше 12 МБ — выберите поменьше"}
-        old = self._lobby_bg_path()
-        if old:
-            old.unlink(missing_ok=True)
-        LAUNCHER_HOME.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, LAUNCHER_HOME / f"lobby_bg{src.suffix.lower()}")
+        try:
+            if src.stat().st_size > 12 * 1024 * 1024:
+                return {"error": "Картинка больше 12 МБ — выберите поменьше"}
+            old = self._lobby_bg_path()
+            if old:
+                old.unlink(missing_ok=True)
+            LAUNCHER_HOME.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, LAUNCHER_HOME / f"lobby_bg{src.suffix.lower()}")
+        except OSError as exc:
+            _log(f"lobby bg: {exc}")
+            return {"error": "Не удалось взять картинку — попробуйте другой файл"}
         return {"url": self.lobby_bg()}
 
     def clear_lobby_bg(self) -> None:
@@ -988,14 +1018,12 @@ class Api(ServerApiMixin):
     def _just_updated(self) -> dict | None:
         """Лаунчер только что обновился через автообновление — покажем, что изменилось с прошлой версии."""
         from core.changelog import notes_since
+        # lastVersion меняем только в ack_update: иначе повторный запуск до «OK» показывал бы пустой список
         previous = self._cfg.ui.get("lastVersion")
-        if previous != APP_VERSION:
-            self._cfg.ui["lastVersion"] = APP_VERSION
-            self._save()
         mark = Path(__file__).resolve().parents[2] / "installed-by-setup.txt"
         try:
             info = dict(line.split("=", 1) for line in mark.read_text(encoding="utf-8").split() if "=" in line)
-        except OSError:
+        except (OSError, UnicodeError):
             return None
         if info.get("update") != "1" or info.get("version") != APP_VERSION \
                 or self._cfg.ui.get("updateShown") == APP_VERSION:
@@ -1007,6 +1035,7 @@ class Api(ServerApiMixin):
 
     def ack_update(self) -> None:
         self._cfg.ui["updateShown"] = APP_VERSION
+        self._cfg.ui["lastVersion"] = APP_VERSION
         self._save()
 
     # ================================================================= обновления
@@ -1134,13 +1163,23 @@ class Api(ServerApiMixin):
             self._save()
 
     def save_settings(self, values: dict) -> dict:
+        # общие файлы (versions, libraries, assets) при смене папки не переносятся: установленные сборки «потеряются»
+        new_dir = values.get("data_dir")
+        if "data_dir" in values and not str(new_dir or "").strip():
+            return {"error": "Укажите папку для общих файлов игры"}   # пустой путь Path("") стал бы текущей папкой
+        if new_dir is not None and Path(str(new_dir)) != Path(self._cfg.data_dir) and self._instances.list():
+            return {"error": "Папку с общими файлами нельзя сменить, пока есть сборки. "
+                             "Сначала удалите сборки или перенесите папку вручную"}
         for key, value in values.items():
             if key in LauncherConfig.__dataclass_fields__ and key != "ui":
                 current = getattr(self._cfg, key)
                 if isinstance(current, bool):
                     value = bool(value)
                 elif isinstance(current, int):
-                    value = int(value)
+                    try:
+                        value = int(value)
+                    except (TypeError, ValueError):   # «12abc» из формы не должно ронять всё сохранение
+                        continue
                 setattr(self._cfg, key, value)
         self._cfg.ram_gb = max(RAM_MIN, min(RAM_MAX, self._cfg.ram_gb))
         self._cfg.download_threads = max(4, min(64, self._cfg.download_threads))
@@ -1223,9 +1262,14 @@ class Api(ServerApiMixin):
             return {"error": "Пароли не совпадают"}
         try:
             skinserver.recover(nick, code, password)
-            acc = self._accounts.reset_offline_password(nick, password, repeat)
         except (skinserver.SkinServerError, AuthError) as exc:
             return {"error": str(exc)}
+        try:
+            acc = self._accounts.reset_offline_password(nick, password, repeat)
+        except AuthError as exc:
+            # сервер уже принял новый пароль и код погашен: на этом ПК аккаунта нет — честно говорим, что делать дальше
+            _log(f"recover {nick}: {exc}")
+            return {"error": "Пароль на сервере уже изменён, код восстановления использован. Войдите с новым паролем."}
         return {**self._activated(acc), **self._new_recovery_code(acc)}   # прежний код погашен — сразу новый
 
     def rename_account(self, new_nick: str, password: str) -> dict:
@@ -1254,10 +1298,22 @@ class Api(ServerApiMixin):
         old = acc.username
         try:
             skinserver.rename(old, new_nick, password)
-            self._accounts.rename_offline(acc.id, new_nick)
-            self._cloud.rename_nick(old, new_nick)        # облачные миры идут за аккаунтом (тот же владелец)
         except (skinserver.SkinServerError, AuthError) as exc:
             return {"error": str(exc)}
+        try:
+            self._accounts.rename_offline(acc.id, new_nick)
+        except Exception as exc:  # noqa: BLE001
+            # на этом ПК ник не сохранился — возвращаем его на сервере, иначе там новый ник, а здесь старый
+            try:
+                skinserver.rename(new_nick, old, password)
+            except Exception as back:  # noqa: BLE001
+                _log(f"rename rollback {new_nick} -> {old}: {back}")
+            msg = str(exc) if isinstance(exc, AuthError) else "Не удалось сохранить новый ник на этом ПК — попробуйте ещё раз"
+            return {"error": msg}
+        try:
+            self._cloud.rename_nick(old, new_nick)        # облачные миры идут за аккаунтом (тот же владелец)
+        except Exception as exc:  # noqa: BLE001
+            _log(f"cloud rename {old} -> {new_nick}: {exc}")
         self._on_runner_event("log", f"[Аккаунт] ник {old} → {new_nick}")
         return self._activated(acc)
 
@@ -1376,13 +1432,17 @@ class Api(ServerApiMixin):
         acc = self._accounts.active
         try:
             self._accounts.change_password(acc.id, old, new, repeat)
+            warning = None
             try:   # replace — на сервере старый пароль перестаёт действовать (раньше оставался среди ключей ника)
                 from core import skinserver
                 skinserver.set_password(acc.username, new, replace=True)
             except Exception as exc:  # noqa: BLE001
                 _log(f"nick key {acc.username}: {exc}")
+                # локально пароль уже новый, а сервер старый: говорим игроку прямо, а не «всё хорошо»
+                warning = ("Пароль на этом ПК изменён, но сервер VaultMC его не принял (нет связи?). "
+                           "Когда появится интернет, войдите в аккаунт с новым паролем — лаунчер передаст его на сервер")
             threading.Thread(target=self._claim_nick, args=(acc.username,), daemon=True).start()
-            return {"ok": True}
+            return {"ok": True, **({"warning": warning} if warning else {})}
         except (AuthError, AttributeError, KeyError) as exc:
             return {"error": str(exc)}
 
@@ -1415,7 +1475,11 @@ class Api(ServerApiMixin):
                 self._pull_offline_skin(acc, custom)
             return self._data_url(custom) if custom.exists() else ""
         cache = SKIN_CACHE / f"{acc.id}.png"
-        if not cache.exists() or time.time() - cache.stat().st_mtime > 3600:
+        try:    # файл мог исчезнуть между exists() и stat() — тогда просто обновляем
+            stale = not cache.exists() or time.time() - cache.stat().st_mtime > 3600
+        except OSError:
+            stale = True
+        if stale:
             try:
                 if acc.kind == "elyby":
                     url = f"https://skinsystem.ely.by/skins/{acc.username}.png"
@@ -1424,8 +1488,14 @@ class Api(ServerApiMixin):
                                        headers={"Authorization": f"Bearer {acc.token()}"})
                     url = next((s["url"] for s in profile.get("skins", []) if s.get("state") == "ACTIVE"), "")
                 if url:
-                    cache.unlink(missing_ok=True)
-                    download(url, cache)
+                    # качаем во временный файл: обрыв сети не должен стереть уже сохранённый скин
+                    tmp = cache.with_suffix(".tmp")
+                    tmp.unlink(missing_ok=True)      # остаток прошлой попытки не должен пройти как «уже скачано»
+                    try:
+                        download(url, tmp)
+                        tmp.replace(cache)
+                    finally:
+                        tmp.unlink(missing_ok=True)
             except Exception:  # noqa: BLE001 — без сети покажем кэш
                 pass
         return self._data_url(cache) if cache.exists() else ""
@@ -1830,10 +1900,15 @@ class Api(ServerApiMixin):
         return [_instance_dict(i, self._repo.game_dir) for i in self._instances.list()]
 
     def create_instance(self, name: str, version_id: str, game_version: str, loader: str) -> dict:
+        if self._runner.busy:
+            return {"error": "Дождитесь окончания текущей операции"}
         inst = self._instances.create(name, version_id, game_version, loader)
+        self._install_target = inst.id
+        if not self._runner.install(version_id):  # занято в ту же миллисекунду: сборку без файлов не оставляем
+            self._instances.delete(inst)
+            return {"error": "Дождитесь окончания текущей операции"}
         self._cfg.selected_instance = inst.id
         self._save()
-        self._runner.install(version_id)  # сразу начинаем скачивать игру
         return _instance_dict(inst, self._repo.game_dir)
 
     def select_instance(self, instance_id: str):
@@ -1843,7 +1918,10 @@ class Api(ServerApiMixin):
     @staticmethod
     def _clamp_ram(value) -> int:
         """0 — «авто»; иначе в пределах RAM_MIN…RAM_MAX (раньше любое число шло в -Xmx как есть)."""
-        n = int(value)
+        try:
+            n = int(value or 0)     # null / пустая строка из формы — «авто», а не TypeError
+        except (TypeError, ValueError):
+            n = 0
         return 0 if n <= 0 else max(RAM_MIN, min(RAM_MAX, n))
 
     def update_instance(self, instance_id: str, values: dict) -> dict:
@@ -1875,6 +1953,9 @@ class Api(ServerApiMixin):
     def delete_instance(self, instance_id: str):
         if self._runner.state in ("running", "preparing", "installing") and self._running_instance == instance_id:
             raise RuntimeError("Сначала закройте игру этой сборки")
+        # установка сборки не ставит _running_instance — без этой проверки папку удалили бы на ходу
+        if self._runner.busy and getattr(self, "_install_target", "") == instance_id:
+            raise RuntimeError("Сборка ещё устанавливается — дождитесь окончания установки")
         self._instances.delete(self._inst(instance_id))
         self._cloud.instance_deleted(instance_id)         # привязки уходят, облачные копии остаются
         if self._cfg.selected_instance == instance_id:
@@ -1896,7 +1977,9 @@ class Api(ServerApiMixin):
     def export_instance(self, instance_id: str, fmt: str = "mrpack") -> dict:
         inst = self._inst(instance_id)
         label, ext = EXPORT_FORMATS.get(fmt, EXPORT_FORMATS["mrpack"])
-        target = self._dialog("save", save_filename=f"{inst.name}{ext}", file_types=(f"{label} (*{ext})",))
+        # pywebview принимает в описании фильтра только буквы, цифры и пробелы — скобки в подписи ломают окно
+        target = self._dialog("save", save_filename=f"{inst.name}{ext}",
+                              file_types=(f"{label.replace('(', '').replace(')', '')} (*{ext})",))
         if not target:
             return {}
         path = export_any(fmt, inst, Path(target), self._instances, self._cf_key,
@@ -3027,6 +3110,7 @@ class Api(ServerApiMixin):
         return ram
 
     def install_instance(self, instance_id: str) -> dict:
+        self._install_target = instance_id
         ok = self._runner.install(self._inst(instance_id).version_id)
         return {"ok": ok} if ok else {"error": "Уже идёт другая операция"}
 
